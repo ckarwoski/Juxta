@@ -1,0 +1,2 @@
+C: a new function inserted between two others.
+Look for: Hunk starts at 'int mul', not at the previous closing brace or blank line.

@@ -1,0 +1,2 @@
+Small token edits: IP octets, MTU, interface number, cost, timeout.
+Look for: Highlights cover whole tokens (10.0.12.1 -> 10.0.12.5, Gi0/0/3 -> Gi0/0/30, 15 -> 5) rather than single characters.

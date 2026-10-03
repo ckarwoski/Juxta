@@ -1,0 +1,2 @@
+Same code; tabs on the left, four spaces on the right.
+Look for: Display of indentation difference; whitespace-ignore behavior.

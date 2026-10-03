@@ -1,0 +1,2 @@
+Same text; ISO-8859-1 on the left, UTF-8 on the right.
+Look for: Left accents display correctly (encoding guessed) and the encoding is shown.

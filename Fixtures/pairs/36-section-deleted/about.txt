@@ -1,0 +1,2 @@
+Whole 'router bgp' section deleted.
+Look for: One clean deletion hunk.

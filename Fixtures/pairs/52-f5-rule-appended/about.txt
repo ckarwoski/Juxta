@@ -1,0 +1,2 @@
+F5 BIG-IP: two blank-separated ltm rules appended at the end (batfish f5_bigip_structured_ltm_rule, commit 2962380c).
+Look for: Hunk is the blank line through the last rule's closing '}' (as git shows it), not the previous rule's '}' through the inner 'when' block's '}'.

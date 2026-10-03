@@ -1,0 +1,2 @@
+NFC vs NFD accents, a non-breaking space, a zero-width space.
+Look for: Whether these are marked as different and whether the difference is visible.

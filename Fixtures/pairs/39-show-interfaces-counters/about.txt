@@ -1,0 +1,2 @@
+show interfaces captured twice; counters moved on.
+Look for: Paired changed lines with only the numbers highlighted.

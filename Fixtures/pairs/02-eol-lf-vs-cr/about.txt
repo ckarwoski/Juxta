@@ -1,0 +1,2 @@
+Same text; LF on the left, classic Mac CR on the right.
+Look for: Right side still splits into lines; line-ending difference is called out.

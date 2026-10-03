@@ -1,0 +1,2 @@
+Route table: some ages change, 3 statics added, 1 route gone.
+Look for: Ages highlighted inline; adds and deletes not paired with unrelated routes.

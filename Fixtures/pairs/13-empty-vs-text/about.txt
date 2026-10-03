@@ -1,0 +1,2 @@
+Empty on the left, text on the right.
+Look for: Everything shown as added; the empty side's display.

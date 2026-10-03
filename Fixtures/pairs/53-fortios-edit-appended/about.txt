@@ -1,0 +1,2 @@
+FortiOS: an 'edit ... next' entry appended to a config table (batfish iface_warn, commit 57e8e205).
+Look for: Hunk runs from 'edit "secondary"' to its own 'next' (as git shows it), not from the previous entry's 'next' to the nested 'end'.

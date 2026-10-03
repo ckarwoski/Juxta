@@ -1,0 +1,2 @@
+ACL block moved above 'router ospf', unchanged.
+Look for: Move detection, or one delete plus one insert (and which side gets anchored).

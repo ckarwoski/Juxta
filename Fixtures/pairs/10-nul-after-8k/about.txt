@@ -1,0 +1,2 @@
+Text file with a NUL byte about 12 KB in (right side only).
+Look for: Whether a late NUL flips the file to binary; how it is shown.

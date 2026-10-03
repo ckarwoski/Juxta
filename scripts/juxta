@@ -1,0 +1,46 @@
+#!/bin/sh
+# Compare two files in Juxta.
+#   juxta left.cfg right.cfg
+#   juxta -c "$LOCAL" "$REMOTE"   # copy first (git difftool deletes its temp files)
+# git difftool passes /dev/null for the missing side of an added or deleted file; that
+# side is shown as an empty file named after the other one.
+usage() {
+    echo "usage: juxta [-c] <left> <right>" >&2
+    echo "  -c  copy the files to a temp folder first" >&2
+    exit 64
+}
+copy=0
+if [ "$1" = "-c" ]; then copy=1; shift; fi
+[ $# -eq 2 ] || usage
+
+abspath() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$PWD" "$1" ;; esac; }
+left=$(abspath "$1")
+right=$(abspath "$2")
+for f in "$left" "$right"; do
+    [ -e "$f" ] || { echo "juxta: $f: No such file" >&2; exit 66; }
+done
+
+if [ $copy -eq 1 ] || [ "$left" = /dev/null ] || [ "$right" = /dev/null ]; then
+    # The app reads the files after `open` returns, so they stay; macOS clears old files
+    # from the per-user $TMPDIR after a few days unused.
+    base=${TMPDIR:-/tmp}
+    tmp=$(mktemp -d "${base%/}/juxta.XXXXXX") && mkdir "$tmp/L" "$tmp/R" || exit 73
+fi
+# Prints the path to open for one side: a copy, an empty placeholder, or the file itself.
+# /dev/null isn't a regular file, so it isn't handed to `open`; a header reading
+# "null" would also say less than "<name> (absent)".
+prepare() { # path dir other
+    if [ "$1" = /dev/null ]; then
+        : > "$tmp/$2/$(basename "$3") (absent)" || exit 74
+        printf '%s\n' "$tmp/$2/$(basename "$3") (absent)"
+    elif [ $copy -eq 1 ]; then
+        cp "$1" "$tmp/$2/$(basename "$1")" || exit 74
+        printf '%s\n' "$tmp/$2/$(basename "$1")"
+    else
+        printf '%s\n' "$1"
+    fi
+}
+newleft=$(prepare "$left" L "$right") || exit
+newright=$(prepare "$right" R "$left") || exit
+
+exec open -a Juxta "$newleft" "$newright"

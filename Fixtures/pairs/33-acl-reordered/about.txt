@@ -1,0 +1,2 @@
+ASA-style ACL lines reordered, none changed.
+Look for: Shown as moves, as delete+insert, or as changed pairs?

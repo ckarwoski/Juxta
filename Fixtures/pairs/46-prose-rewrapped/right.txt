@@ -1,0 +1,7 @@
+The maintenance window starts at 02:00 UTC on Saturday.
+During the window the core routers will be upgraded one at a
+time, and traffic will fail over to the redundant path.
+Customers on single-homed circuits should expect up to ten
+minutes of downtime. If the upgrade fails, we will roll back
+to the previous image and reschedule the work for the
+following weekend.

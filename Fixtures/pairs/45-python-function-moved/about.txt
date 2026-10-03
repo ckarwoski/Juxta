@@ -1,0 +1,2 @@
+Python: a function moved to a different position.
+Look for: Move detection, or a compact delete + insert (not a whole-file rewrite).

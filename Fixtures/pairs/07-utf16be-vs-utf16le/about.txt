@@ -1,0 +1,2 @@
+Same text; UTF-16BE with BOM vs UTF-16LE with BOM.
+Look for: Treated as identical text, with the byte order noted (or not).

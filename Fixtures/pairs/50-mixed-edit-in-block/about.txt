@@ -1,0 +1,2 @@
+Block with an edited line, inserted lines and a split line.
+Look for: Which old line pairs with which new line (description with description, address with address).

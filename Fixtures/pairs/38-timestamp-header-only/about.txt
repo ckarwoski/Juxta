@@ -1,0 +1,2 @@
+Only the 'Last configuration change' comment differs.
+Look for: Single changed line; any option to ignore lines by pattern.

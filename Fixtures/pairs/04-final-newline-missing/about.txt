@@ -1,0 +1,2 @@
+Right side has no newline at the end of the file.
+Look for: Whether the missing final newline is shown, and how.

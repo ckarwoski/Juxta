@@ -1,0 +1,2 @@
+Same text; LF on the left, CRLF on the right.
+Look for: Says the files differ only in line endings, without marking every line.

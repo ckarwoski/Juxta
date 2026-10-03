@@ -1,0 +1,2 @@
+Right side adds blank lines between sections.
+Look for: Whether there's an option to ignore blank lines.

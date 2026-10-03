@@ -1,0 +1,2 @@
+24 identical unused ports; two are configured.
+Look for: Changes land on the right ports (Gi1/0/7 and Gi1/0/16), not a neighbor.

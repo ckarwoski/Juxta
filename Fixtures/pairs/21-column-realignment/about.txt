@@ -1,0 +1,2 @@
+show ip int brief with different column widths.
+Look for: Lines marked changed; whitespace-ignore makes them identical?

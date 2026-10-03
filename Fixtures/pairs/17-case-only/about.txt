@@ -1,0 +1,2 @@
+Right side changes the case of a few keywords.
+Look for: Inline highlight on the changed letters; ignore-case behavior.

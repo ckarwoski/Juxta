@@ -1,0 +1,2 @@
+Paragraph rewrapped from 90 to 60 columns.
+Look for: Whether a reflow-only change is recognized; how noisy it looks.

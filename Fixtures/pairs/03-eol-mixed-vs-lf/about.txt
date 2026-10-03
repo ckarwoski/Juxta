@@ -1,0 +1,2 @@
+Left alternates LF and CRLF; right is all LF.
+Look for: How mixed line endings are reported (per line? a summary?).

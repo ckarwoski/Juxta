@@ -1,0 +1,2 @@
+Same text; the right side starts with a UTF-8 BOM.
+Look for: Whether the BOM is reported or silently ignored.

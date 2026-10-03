@@ -1,0 +1,2 @@
+Right side has trailing spaces on every third line.
+Look for: Whether trailing whitespace is visible; behavior with whitespace ignored.

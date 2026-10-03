@@ -1,0 +1,2 @@
+Interface Gi0/0/2 block deleted.
+Look for: Hunk boundaries line up with the block, not shifted by a shared tail line.

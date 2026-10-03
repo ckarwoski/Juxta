@@ -1,0 +1,2 @@
+New interface block inserted after Gi0/0/3.
+Look for: Hunk starts at 'interface GigabitEthernet0/0/4' and ends at its '!' (not shifted by one '!' or 'negotiation auto' line).

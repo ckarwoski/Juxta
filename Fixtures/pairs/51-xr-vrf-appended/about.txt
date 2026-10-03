@@ -1,0 +1,2 @@
+IOS XR: a blank-separated vrf block appended at the end (batfish xr-vrf-route-target, commit 784e61cb).
+Look for: Hunk is the blank line, 'vrf multiple-af' and its closing '!' (as git shows it), not the previous vrf's '!' through the new vrf's last indented '  !'.

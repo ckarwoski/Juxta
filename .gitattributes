@@ -1,0 +1,2 @@
+# Fixture bytes (line endings, BOMs, encodings) are the point; never normalize them.
+Fixtures/** -text

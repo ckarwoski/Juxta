@@ -1,0 +1,2 @@
+Multi-line banner text changed.
+Look for: Pairing of the changed banner lines.

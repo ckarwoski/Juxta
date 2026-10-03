@@ -1,0 +1,2 @@
+Right side has invalid UTF-8 bytes in one line.
+Look for: No crash or refusal; how the bad bytes are displayed.

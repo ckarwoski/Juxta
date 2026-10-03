@@ -1,0 +1,2 @@
+One ~100 KB line; a single octet changes in the middle.
+Look for: Responsiveness; whether the change is highlighted and findable.

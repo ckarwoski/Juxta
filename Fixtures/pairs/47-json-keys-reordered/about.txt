@@ -1,0 +1,2 @@
+JSON keys reordered plus one real change.
+Look for: Whether the real change stands out from the reorder noise.

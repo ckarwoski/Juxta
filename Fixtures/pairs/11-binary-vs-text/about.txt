@@ -1,0 +1,2 @@
+Left is binary (PNG-like bytes), right is text.
+Look for: Refusal message or hex view; no garbage text.

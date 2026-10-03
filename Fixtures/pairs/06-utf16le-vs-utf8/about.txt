@@ -1,0 +1,2 @@
+Same text; UTF-16LE with BOM on the left, UTF-8 on the right.
+Look for: Decodes UTF-16 as text (not binary) and reports the encoding difference.

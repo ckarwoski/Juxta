@@ -1,0 +1,2 @@
+Insert next to a line that appears twice (exec-timeout).
+Look for: Insert lands under 'line vty', not under 'line con'.
