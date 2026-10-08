@@ -97,7 +97,6 @@ final class ChangeMapView: NSView {
     private let presentation: DiffPresentation
     weak var controller: CompareWindowController?
     private var dragOffset: CGFloat?
-    private let inset: CGFloat = 4
 
     init(presentation: DiffPresentation) {
         self.presentation = presentation
@@ -110,7 +109,26 @@ final class ChangeMapView: NSView {
     override var isFlipped: Bool { true }
     override var isOpaque: Bool { true }
 
-    private var trackHeight: CGFloat { max(1, bounds.height - inset * 2) }
+    private var track: ChangeMapTrack {
+        ChangeMapTrack(height: bounds.height, top: 4, bottom: ChangeMapTrack.bottomInset(
+            cornerRadius: cornerRadius, pixel: 1 / (window?.backingScaleFactor ?? 1)))
+    }
+
+    /// Radius of the window's bottom-right corner, which this view sits in; 0 when square.
+    /// Entering or leaving full screen resizes the view, which redraws it.
+    private var cornerRadius: CGFloat {
+        guard let window else { return 0 }
+        if #available(macOS 27, *) {
+            // This view has no corner configuration, so its own radii are nil.
+            return window.contentView?.effectiveCornerRadii?.bottomRight ?? 0
+        } else if #available(macOS 26, *) {
+            // No radius API, but the safe area steps in by the radius at a rounded corner.
+            // It still does in full screen, where the corners are square.
+            if window.styleMask.contains(.fullScreen) { return 0 }
+            return edgeInsets(for: .safeArea(cornerAdaptation: .vertical)).bottom
+        }
+        return 0
+    }
 
     /// The visible portion of the document, as fractions of its total height.
     private var viewport: (top: CGFloat, height: CGFloat)? {
@@ -134,12 +152,11 @@ final class ChangeMapView: NSView {
         let p = presentation
         let rowCount = p.result.rows.count
         if rowCount > 0 {
-            let scale = trackHeight / CGFloat(rowCount)
+            let track = track
             for segment in p.segments {
-                let y = inset + CGFloat(segment.rows.lowerBound) * scale
-                let h = max(2, CGFloat(segment.rows.count) * scale)
+                let marker = track.marker(rows: segment.rows, of: rowCount)
                 Theme.marker(for: segment.kind).setFill()
-                NSRect(x: 4, y: y, width: bounds.width - 7, height: h).fill()
+                NSRect(x: 4, y: marker.y, width: bounds.width - 7, height: marker.height).fill()
             }
         }
 
@@ -152,9 +169,8 @@ final class ChangeMapView: NSView {
     }
 
     private func knobRect(_ viewport: (top: CGFloat, height: CGFloat)) -> NSRect {
-        let h = max(16, viewport.height * trackHeight)
-        let y = inset + viewport.top * (trackHeight - h) / max(0.0001, 1 - viewport.height)
-        return NSRect(x: 1.5, y: y, width: bounds.width - 3, height: h).insetBy(dx: 0.5, dy: 0.5)
+        let knob = track.knob(top: viewport.top, height: viewport.height)
+        return NSRect(x: 1.5, y: knob.y, width: bounds.width - 3, height: knob.height).insetBy(dx: 0.5, dy: 0.5)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -177,10 +193,8 @@ final class ChangeMapView: NSView {
     private func scrollKnob(to y: CGFloat) {
         guard let viewport, let dragOffset, let controller,
               let metrics = controller.scrollMetrics else { return }
-        let knobHeight = knobRect(viewport).height
-        let travel = trackHeight - knobHeight
-        guard travel > 0 else { return }
-        let fraction = min(max((y - dragOffset - inset) / travel, 0), 1)
+        guard let fraction = track.fraction(knobY: y - dragOffset, knobHeight: knobRect(viewport).height)
+        else { return }
         controller.scroll(toY: fraction * (metrics.total - metrics.visible))
     }
 
