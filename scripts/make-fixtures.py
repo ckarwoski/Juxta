@@ -452,6 +452,69 @@ def encodings():
           join(wide) + "\n", join(narrow) + "\n", "txt")
 
 
+# MARK: - Show output with timers (22-29)
+
+SHOW_TIMERS = """\
+r1#show version | include uptime
+r1 uptime is {uptime}
+r1#show ip ospf neighbor
+
+Neighbor ID     Pri   State           Dead Time   Address         Interface
+10.255.0.2        1   FULL/DR         {dead2}    10.0.12.2       GigabitEthernet0/0/0
+10.255.0.3        1   {state3}{dead3}    10.0.13.2       GigabitEthernet0/0/1
+r1#show ip bgp summary | begin Neighbor
+Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
+10.255.0.2      4        65001    1204    1187       42    0    0 {up2}           12
+10.255.0.3      4        65001     980     975       42    0    0 {up3}
+r1#show interfaces | include ^Gi|Last input
+GigabitEthernet0/0/0 is up, line protocol is up
+  Last input {in0}, output {out0}, output hang never
+GigabitEthernet0/0/1 is up, line protocol is up
+  Last input {in1}, output {out1}, output hang never
+r1#show ipv6 interface brief
+GigabitEthernet0/0/0   [up/up]
+    FE80::1:22:{v6}
+    2001:DB8:12::1
+r1#show arp | include 10.0.0.5
+Internet  10.0.0.5               14   aabb.1d00.{mac}  ARPA   GigabitEthernet0/0/2
+r1#show running-config | include community|periodic
+ set community 65000:{community}
+ periodic weekdays 08:00 to {until}
+"""
+
+
+def show_timers():
+    # No rng here: drawing from it would change every pair generated after these.
+    def age(i, later):
+        s = 1 if later else 0
+        if i % 3 == 0:
+            return f"{i % 24:02d}:{(i * 7 + 11 * s) % 60:02d}:{(i * 13 + 29 * s) % 60:02d}"
+        if i % 3 == 1:
+            return f"{1 + i % 5}w{(i + s) % 7}d"
+        return f"{1 + i % 6}d{(i + s) % 24:02d}h"
+
+    left = [route(i, age(i, False)) for i in range(40) if i != 17]
+    right = [route(i, "00:00:07" if i == 17 else age(i, True)) for i in range(40)]
+    small(22, "route-table-timers", "show ip route before and after adding one route; every age "
+          "moved on (hh:mm:ss, 1w2d, 3d04h).",
+          "Nearly every line modified; with Ignore Timers only 10.0.0.17/32 (added).",
+          join(left) + "\n", join(right) + "\n", "txt")
+    before = SHOW_TIMERS.format(
+        uptime="2 weeks, 3 days, 4 hours, 5 minutes", dead2="00:00:34", state3="FULL/BDR        ",
+        dead3="00:00:38", up2="1w2d", up3="3d04h           7", in0="00:00:01", out0="00:00:00",
+        in1="never", out1="00:00:03", v6="33", mac="0100", community="100", until="17:00")
+    after = SHOW_TIMERS.format(
+        uptime="2 weeks, 3 days, 5 hours, 17 minutes", dead2="00:00:31", state3="INIT/DROTHER    ",
+        dead3="00:00:35", up2="1w3d", up3="00:00:12 Idle", in0="00:00:04", out0="00:00:02",
+        in1="00:00:02", out1="00:00:01", v6="34", mac="0101", community="200", until="18:00")
+    small(23, "show-output-timers", "Show commands captured twice: uptime, neighbor and BGP timers "
+          "and Last input moved on, plus six real changes among values that look like timers "
+          "(IPv6, MAC, community, time range). Counters held still: Ignore Timers doesn't hide them.",
+          "With Ignore Timers, six modified lines: OSPF 10.255.0.3 and BGP 10.255.0.3 state, "
+          "FE80::1:22:34, aabb.1d00.0101, 65000:200 and 18:00; no timer highlighted.",
+          before, after, "txt")
+
+
 # MARK: - Config alignment and inline highlighting (30-50)
 
 def configs():
@@ -760,6 +823,7 @@ def perf(huge):
 
 if __name__ == "__main__":
     encodings()
+    show_timers()
     configs()
     git_findings()
     perf("--huge" in sys.argv)

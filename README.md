@@ -42,7 +42,12 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
   or click anywhere in the change map on the right edge.
 - **Colors:** blue = modified line (changed characters highlighted), red = removed,
   green = added, hatched = nothing on this side.
-- **Options** (toolbar ⚙︎ or View menu): Ignore Whitespace, Ignore Case. These are remembered.
+- **Options** (toolbar ⚙︎ or View menu): Ignore Whitespace, Ignore Case, Ignore Timers. These are
+  remembered.
+  - Ignore Timers compares the ages and uptimes in show output as equal: `00:12:44`, `1w2d`,
+    `3w2d 04:11:22`, `2 weeks, 3 days`, `Last input never`. Timers that are bare numbers (EIGRP
+    hold, ARP age) and counters still show; clock times with seconds are ignored too.
+    `juxta-diff -t` does the same.
 - **Font** (Juxta → Settings…, ⌘,): any installed monospaced font and typeface, size, line spacing,
   and ligatures (off by default, so a diff shows exactly which characters are in the file).
   Changes apply to every open window as you make them.

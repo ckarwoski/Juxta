@@ -4,11 +4,16 @@ public struct DiffOptions: Equatable, Sendable {
     /// Treat runs of whitespace as a single space and ignore leading/trailing whitespace.
     public var ignoreWhitespace: Bool
     public var ignoreCase: Bool
+    /// Compare timer and uptime values in show output (`00:12:44`, `1w2d`) as equal; see `Timers`.
+    public var ignoreTimers: Bool
 
-    public init(ignoreWhitespace: Bool = false, ignoreCase: Bool = false) {
+    public init(ignoreWhitespace: Bool = false, ignoreCase: Bool = false, ignoreTimers: Bool = false) {
         self.ignoreWhitespace = ignoreWhitespace
         self.ignoreCase = ignoreCase
+        self.ignoreTimers = ignoreTimers
     }
+
+    public var ignoresAny: Bool { ignoreWhitespace || ignoreCase || ignoreTimers }
 }
 
 public enum RowKind: UInt8, Sendable {
@@ -154,7 +159,9 @@ public enum Comparator {
     ) -> InlineChanges? {
         let a = Array(left.utf16), b = Array(right.utf16)
         if a.isEmpty || b.isEmpty { return nil }
-        let ta = tokens(a), tb = tokens(b)
+        let timersA = options.ignoreTimers ? Timers.ranges(in: a) : []
+        let timersB = options.ignoreTimers ? Timers.ranges(in: b) : []
+        let ta = tokens(a, timers: timersA), tb = tokens(b, timers: timersB)
         var litA = [Bool](repeating: true, count: ta.count)
         var litB = [Bool](repeating: true, count: tb.count)
         func key(_ units: [UInt16], _ token: Token) -> ArraySlice<UInt16> {
@@ -164,7 +171,7 @@ public enum Comparator {
         }
         if sameShape(ta, tb) {
             for k in ta.indices {
-                let differs = key(a, ta[k]) != key(b, tb[k])
+                let differs = !(ta[k].isTimer && tb[k].isTimer) && key(a, ta[k]) != key(b, tb[k])
                 litA[k] = differs
                 litB[k] = differs
             }
@@ -174,6 +181,8 @@ public enum Comparator {
             var table = [ArraySlice<UInt16>: Int32](minimumCapacity: ta.count + tb.count)
             func ids(_ units: [UInt16], _ list: [Token]) -> [Int32] {
                 list.map { token in
+                    // Timers all match each other, as runs of plain spaces do.
+                    if token.isTimer { return -2 }
                     // Runs of plain spaces all match, whatever their width: realigned
                     // columns could otherwise outbid an unchanged word (`connected  10`
                     // vs `notconnect 10   `) and get it highlighted. Other runs match by
@@ -210,6 +219,8 @@ public enum Comparator {
         var isSpace: Bool
         /// The character, for a punctuation token; 0 otherwise.
         var punctuation: UInt16 = 0
+        /// A whole timer, as one word, when ignoring timers.
+        var isTimer = false
     }
 
     /// Tabs and spaces, including the no-break and other unusual spaces that look like one.
@@ -238,13 +249,18 @@ public enum Comparator {
         return result[...]
     }
 
-    /// Words and whitespace runs, with each punctuation or invisible character a token of its own.
-    private static func tokens(_ units: [UInt16]) -> [Token] {
+    /// Words and whitespace runs, with each punctuation or invisible character a token of
+    /// its own, and each of `timers` (sorted UTF-16 ranges) a single word.
+    private static func tokens(_ units: [UInt16], timers: [Range<Int>] = []) -> [Token] {
         var list: [Token] = []
-        var k = 0
+        var k = 0, next = 0
         while k < units.count {
             let start = k
-            if isPunctuation(units[k]) {
+            if next < timers.count && k == timers[next].lowerBound {
+                k = timers[next].upperBound
+                next += 1
+                list.append(Token(range: start..<k, isWord: true, isSpace: false, isTimer: true))
+            } else if isPunctuation(units[k]) {
                 k += 1
                 list.append(Token(range: start..<k, isWord: false, isSpace: false, punctuation: units[start]))
             } else if isSpace(units[k]) {
@@ -254,7 +270,10 @@ public enum Comparator {
                 k += 1
                 list.append(Token(range: start..<k, isWord: true, isSpace: false))
             } else {
-                while k < units.count && !isSpace(units[k]) && !isPunctuation(units[k]) && !isInvisible(units[k]) {
+                // Timers start at a digit or `n`, so only a word can run into one.
+                let stop = next < timers.count ? timers[next].lowerBound : units.count
+                while k < units.count && k != stop
+                        && !isSpace(units[k]) && !isPunctuation(units[k]) && !isInvisible(units[k]) {
                     k += 1
                 }
                 list.append(Token(range: start..<k, isWord: true, isSpace: false))
@@ -335,8 +354,11 @@ public enum Comparator {
         return (unpaired + opened).sorted()
     }
 
+    /// Timers are found in the line as it is, the text `inlineChanges` scans too. The
+    /// sentinel they become survives the whitespace and case steps.
     private static func normalize(_ line: String, _ options: DiffOptions) -> String {
         var s = line
+        if options.ignoreTimers { s = Timers.masked(s) }
         if options.ignoreWhitespace {
             s = s.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ")
         }
@@ -348,7 +370,7 @@ public enum Comparator {
         _ left: [String], _ right: [String], options: DiffOptions
     ) -> ([Int32], [Int32]) {
         var table = [ExactLine: Int32](minimumCapacity: left.count + right.count)
-        let normalizing = options.ignoreWhitespace || options.ignoreCase
+        let normalizing = options.ignoresAny
         func ids(_ lines: [String]) -> [Int32] {
             lines.map { line in
                 let key = ExactLine(normalizing ? normalize(line, options) : line)
@@ -520,7 +542,7 @@ public enum Comparator {
     /// usually name what the line describes (a route's prefix, an ACL entry's action),
     /// so they survive edits to the rest of the line and to ACL sequence numbers.
     private static func leadingWords(_ line: String, _ count: Int, _ options: DiffOptions) -> Int {
-        var text = options.ignoreCase ? line.lowercased() : line
+        var text = pairingText(line, options)
         return text.withUTF8 { bytes in
             func isSpace(_ k: Int) -> Bool { bytes[k] == 0x20 || bytes[k] == 0x09 }
             var hasher = Hasher()
@@ -609,9 +631,15 @@ public enum Comparator {
         return pairs.reversed()
     }
 
-    private static func bigrams(_ line: String, _ options: DiffOptions) -> [UInt32] {
-        var text = line.trimmingCharacters(in: .whitespaces)
+    /// The text pairing compares: timers masked and case folded, as the options say.
+    private static func pairingText(_ line: String, _ options: DiffOptions) -> String {
+        var text = options.ignoreTimers ? Timers.masked(line) : line
         if options.ignoreCase { text = text.lowercased() }
+        return text
+    }
+
+    private static func bigrams(_ line: String, _ options: DiffOptions) -> [UInt32] {
+        let text = pairingText(line.trimmingCharacters(in: .whitespaces), options)
         let bytes = Array(text.utf8)
         if bytes.count < 2 { return bytes.map { UInt32($0) << 16 } }
         var grams = [UInt32]()

@@ -230,6 +230,32 @@ final class DiffTests: XCTestCase {
         }
     }
 
+    /// With timers ignored, a highlight holds a timer whole or not at all.
+    func testHighlightsNeverSplitATimer() {
+        let pieces = ["a", "10", " ", "  ", ".", ":", ",", "-", "(", ")", "é", "00:12:44", "1w2d", "3d04h",
+                      "5d 3:04:11", "2 weeks, 3 days", " never", "input", "x"]
+        let timers = DiffOptions(ignoreTimers: true)
+        var rng = SystemRandomNumberGenerator()
+        for _ in 0..<10_000 {
+            let a = (0..<Int.random(in: 1...10, using: &rng)).map { _ in pieces.randomElement(using: &rng)! }.joined()
+            let b = (0..<Int.random(in: 1...10, using: &rng)).map { _ in pieces.randomElement(using: &rng)! }.joined()
+            guard let inline = Comparator.inlineChanges(a, b, options: timers) else { continue }
+            for (line, ranges) in [(a, inline.left), (b, inline.right)] {
+                let units = Array(line.utf16)
+                var end = 0
+                for range in ranges {
+                    XCTAssertTrue(range.length > 0 && range.location >= end && NSMaxRange(range) <= units.count, line)
+                    end = NSMaxRange(range)
+                    for timer in Timers.ranges(in: units) {
+                        let overlap = max(timer.lowerBound, range.location) < min(timer.upperBound, NSMaxRange(range))
+                        let holds = range.location <= timer.lowerBound && timer.upperBound <= NSMaxRange(range)
+                        XCTAssertTrue(!overlap || holds, "\(line) | \(range)")
+                    }
+                }
+            }
+        }
+    }
+
     func testAdjacentTokensMergeIntoOneRange() {
         XCTAssertEqual(lit("via 192.168.1.9, 01:02:03, Gi0/0/1", "via 192.168.1.9, 16:42:40, Gi0/0/1")?.left,
                        ["01:02:03"])
@@ -263,6 +289,23 @@ final class DiffTests: XCTestCase {
         XCTAssertNil(Comparator.inlineChanges("  mtu 9000", "mtu 9000", options: spaces))
         XCTAssertEqual(lit("     5 input errors", " 50 input  errors", options: spaces)?.right, ["50"])
         XCTAssertEqual(lit("ip ospf cost 10", "ip ospf  cost 100 ", options: spaces)?.right, ["100"])
+
+        let timers = DiffOptions(ignoreTimers: true)
+        XCTAssertNil(Comparator.inlineChanges("Last input 00:00:01, output 00:00:00",
+                                              "Last input never, output 00:00:00", options: timers))
+        let (route, newer) = ("O 10.0.0.1/32 [110/2] via 192.168.1.1, 00:12:44, Gi0/0",
+                              "O 10.0.0.1/32 [110/3] via 192.168.1.1, 1w2d, Gi0/0")
+        XCTAssertEqual(lit(route, newer, options: timers)?.right, ["3"])
+        XCTAssertEqual(lit(route, newer)?.right, ["3", "1w2d"])
+        // A timer is one token, whatever its shape, so the line keeps its shape.
+        XCTAssertEqual(lit("10.0.0.2  65002  1200  1300  0  0  1w2d 3:04:05 Establ",
+                           "10.0.0.2  65002  1200  1300  0  0  5d 23:59:01 Active", options: timers)?.right,
+                       ["Active"])
+        XCTAssertEqual(lit("Uptime=00:12:44 state up", "Uptime=1w2d state down", options: timers)?.right, ["down"])
+        // A timer replaced by something else is a real change.
+        let unknown = lit("uptime 00:12:44 x", "uptime unknown x", options: timers)
+        XCTAssertEqual(unknown?.left, ["00:12:44"])
+        XCTAssertEqual(unknown?.right, ["unknown"])
     }
 
     func testOffsetsAreUTF16() {
@@ -336,6 +379,38 @@ final class DiffTests: XCTestCase {
         XCTAssertTrue(Comparator.compare(left, right, options: DiffOptions(ignoreWhitespace: true, ignoreCase: true)).isIdentical)
     }
 
+    func testIgnoreTimers() {
+        let left = ["Gateway of last resort is not set",
+                    "O    10.0.0.1/32 [110/2] via 192.168.1.1, 00:12:44, Gi0/0",
+                    "O    10.0.0.2/32 [110/2] via 192.168.1.1, 1w2d, Gi0/0",
+                    "O    10.0.0.3/32 [110/2] via 192.168.1.1, 3d04h, Gi0/0"]
+        let right = ["Gateway of last resort is not set",
+                     "O    10.0.0.1/32 [110/2] via 192.168.1.1, 00:13:50, Gi0/0",
+                     "S    172.16.0.0/24 [1/0] via 10.0.0.1",
+                     "O    10.0.0.2/32 [110/2] via 192.168.1.1, 1w3d, Gi0/0",
+                     "O    10.0.0.3/32 [110/2] via 192.168.1.1, 3d05h, Gi0/0"]
+        let timers = DiffOptions(ignoreTimers: true)
+        let result = Comparator.compare(left, right, options: timers)
+        XCTAssertEqual(result.rows.filter { $0.kind != .same }, [DiffRow(left: -1, right: 2, kind: .inserted)])
+        XCTAssertEqual(Comparator.compare(left, right).changedLines, 3)
+
+        // With the other options too.
+        let neighbor = ["Neighbor 10.0.0.2  UP  00:12:44"], other = ["neighbor 10.0.0.2 UP 1w2d"]
+        let all = DiffOptions(ignoreWhitespace: true, ignoreCase: true, ignoreTimers: true)
+        XCTAssertTrue(Comparator.compare(neighbor, other, options: all).isIdentical)
+        XCTAssertFalse(Comparator.compare(neighbor, other, options: timers).isIdentical)
+
+        // Things that look like timers still differ.
+        for (a, b) in [("ipv6 address fe80::1:22:33", "ipv6 address fe80::1:22:34"),
+                       ("periodic weekdays 08:00 to 17:00", "periodic weekdays 08:00 to 18:00"),
+                       ("set community 65000:100", "set community 65000:200"),
+                       ("10.0.0.5  0  aabb.1d00.0100  ARPA", "10.0.0.5  0  aabb.1d00.0101  ARPA"),
+                       ("mac 00:11:22:33:44:55", "mac 00:11:22:33:44:56"),
+                       ("  Last reset never", "  Last reset 00:00:05")] {
+            XCTAssertFalse(Comparator.compare([a], [b], options: all).isIdentical, a)
+        }
+    }
+
     func testLineSplitting() {
         let doc = TextDocument(text: "\u{FEFF}a\r\nb\n\nc", name: "t")
         XCTAssertEqual(doc.lines, ["a", "b", "", "c"])
@@ -363,9 +438,11 @@ final class DiffTests: XCTestCase {
 
     func testRowsReconstructBothSidesWithOptions() {
         var rng = SystemRandomNumberGenerator()
-        let words = ["interface Gi0/1", "Interface  Gi0/1 ", " shutdown", "  SHUTDOWN", "!", " mtu 9000", "", " "]
+        let words = ["interface Gi0/1", "Interface  Gi0/1 ", " shutdown", "  SHUTDOWN", "!", " mtu 9000", "", " ",
+                     "via 10.0.0.1, 00:12:44, Gi0/0", "via 10.0.0.1, 1w2d, Gi0/0", "  Last input never, output 00:00:00"]
         let allOptions = [DiffOptions(ignoreWhitespace: true), DiffOptions(ignoreCase: true),
-                          DiffOptions(ignoreWhitespace: true, ignoreCase: true)]
+                          DiffOptions(ignoreWhitespace: true, ignoreCase: true), DiffOptions(ignoreTimers: true),
+                          DiffOptions(ignoreWhitespace: true, ignoreCase: true, ignoreTimers: true)]
         for options in allOptions {
             for _ in 0..<300 {
                 let left = (0..<Int.random(in: 0...25, using: &rng)).map { _ in words.randomElement(using: &rng)! }
@@ -373,6 +450,11 @@ final class DiffTests: XCTestCase {
                 let result = Comparator.compare(left, right, options: options)
                 XCTAssertEqual(result.rows.filter { $0.left >= 0 }.map { left[Int($0.left)] }, left)
                 XCTAssertEqual(result.rows.filter { $0.right >= 0 }.map { right[Int($0.right)] }, right)
+                if options == DiffOptions(ignoreTimers: true) {
+                    for row in result.rows where row.kind == .same {
+                        XCTAssertEqual(Timers.masked(left[Int(row.left)]), Timers.masked(right[Int(row.right)]))
+                    }
+                }
             }
         }
     }

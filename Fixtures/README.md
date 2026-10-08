@@ -34,6 +34,8 @@ script, not the files. See `docs/testing-plan.md` for how they fit into testing.
 | `pairs/19-unicode-invisibles` | NFC vs NFD accents, a non-breaking space, a zero-width space. |
 | `pairs/20-single-long-line` | One ~100 KB line; a single octet changes in the middle. |
 | `pairs/21-column-realignment` | show ip int brief with different column widths. |
+| `pairs/22-route-table-timers` | show ip route before and after adding one route; every age moved on (hh:mm:ss, 1w2d, 3d04h). |
+| `pairs/23-show-output-timers` | Show commands captured twice: uptime, neighbor and BGP timers and Last input moved on, plus six real changes among values that look like timers (IPv6, MAC, community, time range). Counters held still: Ignore Timers doesn't hide them. |
 | `pairs/30-ios-block-inserted` | New interface block inserted after Gi0/0/3. |
 | `pairs/31-ios-block-deleted` | Interface Gi0/0/2 block deleted. |
 | `pairs/32-acl-resequenced` | ACL entry added and the list resequenced (every number shifts). |

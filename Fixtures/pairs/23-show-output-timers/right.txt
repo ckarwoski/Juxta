@@ -1,0 +1,25 @@
+r1#show version | include uptime
+r1 uptime is 2 weeks, 3 days, 5 hours, 17 minutes
+r1#show ip ospf neighbor
+
+Neighbor ID     Pri   State           Dead Time   Address         Interface
+10.255.0.2        1   FULL/DR         00:00:31    10.0.12.2       GigabitEthernet0/0/0
+10.255.0.3        1   INIT/DROTHER    00:00:35    10.0.13.2       GigabitEthernet0/0/1
+r1#show ip bgp summary | begin Neighbor
+Neighbor        V           AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/PfxRcd
+10.255.0.2      4        65001    1204    1187       42    0    0 1w3d           12
+10.255.0.3      4        65001     980     975       42    0    0 00:00:12 Idle
+r1#show interfaces | include ^Gi|Last input
+GigabitEthernet0/0/0 is up, line protocol is up
+  Last input 00:00:04, output 00:00:02, output hang never
+GigabitEthernet0/0/1 is up, line protocol is up
+  Last input 00:00:02, output 00:00:01, output hang never
+r1#show ipv6 interface brief
+GigabitEthernet0/0/0   [up/up]
+    FE80::1:22:34
+    2001:DB8:12::1
+r1#show arp | include 10.0.0.5
+Internet  10.0.0.5               14   aabb.1d00.0101  ARPA   GigabitEthernet0/0/2
+r1#show running-config | include community|periodic
+ set community 65000:200
+ periodic weekdays 08:00 to 18:00

@@ -1,0 +1,2 @@
+show ip route before and after adding one route; every age moved on (hh:mm:ss, 1w2d, 3d04h).
+Look for: Nearly every line modified; with Ignore Timers only 10.0.0.17/32 (added).
