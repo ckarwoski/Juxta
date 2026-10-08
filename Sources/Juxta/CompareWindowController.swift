@@ -13,11 +13,13 @@ enum Preferences {
     static var options: DiffOptions {
         get {
             DiffOptions(ignoreWhitespace: defaults.bool(forKey: "ignoreWhitespace"),
-                        ignoreCase: defaults.bool(forKey: "ignoreCase"))
+                        ignoreCase: defaults.bool(forKey: "ignoreCase"),
+                        ignoreTimers: defaults.bool(forKey: "ignoreTimers"))
         }
         set {
             defaults.set(newValue.ignoreWhitespace, forKey: "ignoreWhitespace")
             defaults.set(newValue.ignoreCase, forKey: "ignoreCase")
+            defaults.set(newValue.ignoreTimers, forKey: "ignoreTimers")
         }
     }
 
@@ -221,6 +223,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             let menu = NSMenu()
             menu.addItem(withTitle: "Ignore Whitespace", action: #selector(toggleIgnoreWhitespace(_:)), keyEquivalent: "")
             menu.addItem(withTitle: "Ignore Case", action: #selector(toggleIgnoreCase(_:)), keyEquivalent: "")
+            menu.addItem(withTitle: "Ignore Timers", action: #selector(toggleIgnoreTimers(_:)), keyEquivalent: "")
             item.menu = menu
             return item
         case .swap:
@@ -509,7 +512,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             hidden = left.hiddenDifferences(from: right)
             bytesSame = left.isByteIdentical(to: right)
         }
-        let ignoringAny = presentation.options.ignoreWhitespace || presentation.options.ignoreCase
+        let ignoringAny = presentation.options.ignoresAny
         if result.isIdentical {
             if !hidden.isEmpty {
                 parts.append("Same text")
@@ -536,8 +539,9 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         var ignoring: [String] = []
         if presentation.options.ignoreWhitespace { ignoring.append("whitespace") }
         if presentation.options.ignoreCase { ignoring.append("case") }
-        if !hidden.isEmpty { parts.append("differs in " + hidden.map(\.rawValue).joined(separator: " & ")) }
-        if !ignoring.isEmpty { parts.append("ignoring \(ignoring.joined(separator: " & "))") }
+        if presentation.options.ignoreTimers { ignoring.append("timers") }
+        if !hidden.isEmpty { parts.append("differs in " + Self.listed(hidden.map(\.rawValue))) }
+        if !ignoring.isEmpty { parts.append("ignoring " + Self.listed(ignoring)) }
         if result.isApproximate { parts.append("approximate (comparison timed out)") }
         window.subtitle = parts.joined(separator: " · ")
         if result.isIdentical {
@@ -545,6 +549,12 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             noticeWanted = true
             updateNoticeVisibility()
         }
+    }
+
+    /// "a", "a & b", "a, b & c".
+    private static func listed(_ items: [String]) -> String {
+        guard let last = items.last, items.count > 1 else { return items.first ?? "" }
+        return items.dropLast().joined(separator: ", ") + " & " + last
     }
 
     /// The note floats over the bottom of the panes. Rows under it can be scrolled out
@@ -875,6 +885,12 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         recompute()
     }
 
+    @objc func toggleIgnoreTimers(_ sender: Any?) {
+        presentation.options.ignoreTimers.toggle()
+        Preferences.options = presentation.options
+        recompute()
+    }
+
     /// Keeps the top row in place, so the text grows or shrinks around what was being read.
     @objc private func textStyleDidChange(_ notification: Notification) {
         let style = Preferences.textStyle
@@ -909,6 +925,8 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             item.state = presentation.options.ignoreWhitespace ? .on : .off
         case #selector(toggleIgnoreCase(_:)):
             item.state = presentation.options.ignoreCase ? .on : .off
+        case #selector(toggleIgnoreTimers(_:)):
+            item.state = presentation.options.ignoreTimers ? .on : .off
         case #selector(goToNextChange(_:)), #selector(goToPreviousChange(_:)):
             return !presentation.result.hunks.isEmpty
         case #selector(reloadDocuments(_:)):

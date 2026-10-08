@@ -86,10 +86,11 @@ final class PerformanceTests: XCTestCase {
         XCTAssertLessThan(elapsed, limit(debug: 0.05, release: 0.05))
         XCTAssertEqual(result.changedLines, 100)
         XCTAssertEqual(result.hunks.count, 100)
+        XCTAssertTrue(Comparator.compare(left, right, options: DiffOptions(ignoreTimers: true)).isIdentical)
     }
 
-    /// Synthetic 200k-line table, so a large compare is timed even without generated fixtures.
-    func testSynthetic200kRoutingTable() {
+    /// A 200k-line table with 1% of ages changed, 100 routes removed and 50 statics added.
+    private func synthetic200k() -> (left: [String], right: [String]) {
         let left = routes(200_000)
         var right = left
         for i in stride(from: 0, to: right.count, by: 97) {
@@ -97,6 +98,12 @@ final class PerformanceTests: XCTestCase {
         }
         right.removeSubrange(5000..<5100)
         right.insert(contentsOf: (0..<50).map { "S    172.16.\($0).0/24 [1/0] via 10.0.0.1" }, at: 90_000)
+        return (left, right)
+    }
+
+    /// Synthetic 200k-line table, so a large compare is timed even without generated fixtures.
+    func testSynthetic200kRoutingTable() {
+        let (left, right) = synthetic200k()
         let start = DispatchTime.now().uptimeNanoseconds
         let result = Comparator.compare(left, right)
         let elapsed = Self.seconds(since: start)
@@ -106,9 +113,27 @@ final class PerformanceTests: XCTestCase {
         assertRebuildsBothFiles(result, leftCount: left.count, rightCount: right.count)
     }
 
+    /// The same table with timers ignored: every line is scanned and the changed ages drop out.
+    func testSynthetic200kIgnoringTimers() {
+        let (left, right) = synthetic200k()
+        let start = DispatchTime.now().uptimeNanoseconds
+        let result = Comparator.compare(left, right, options: DiffOptions(ignoreTimers: true))
+        let elapsed = Self.seconds(since: start)
+        print(String(format: "synthetic 200k ignoring timers: compare %.3fs, %d hunks", elapsed, result.hunks.count))
+        XCTAssertLessThan(elapsed, limit(debug: 6, release: 0.75))
+        XCTAssertEqual(result.changedLines, 0)
+        XCTAssertEqual(result.deletedLines, 100)
+        XCTAssertEqual(result.insertedLines, 50)
+        XCTAssertFalse(result.isApproximate)
+        assertRebuildsBothFiles(result, leftCount: left.count, rightCount: right.count)
+    }
+
     func test60Routes20k() throws {
         let timed = try timeFixture("60", debug: 0.5, release: 0.25)
         XCTAssertEqual(timed.result.changedLines, 1000)
+        // Only ages changed.
+        let ignoring = DiffOptions(ignoreTimers: true)
+        XCTAssertTrue(Comparator.compare(timed.left.lines, timed.right.lines, options: ignoring).isIdentical)
     }
 
     func test61Routes200k() throws {

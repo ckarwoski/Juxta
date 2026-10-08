@@ -4,7 +4,7 @@ import JuxtaCore
 // Command-line front end to JuxtaCore, for scripts (scripts/compare-git.py) and debugging.
 // Exit status follows diff: 0 identical, 1 different, 2 trouble.
 
-let usage = "usage: juxta-diff [--ignore-whitespace] [--ignore-case] [--stats|--json|--rows] [--] <left> <right>\n"
+let usage = "usage: juxta-diff [--ignore-whitespace] [--ignore-case] [--ignore-timers] [--stats|--json|--rows] [--] <left> <right>\n"
     + "(either file can be - for standard input)"
 
 enum Mode { case stats, json, rows }
@@ -27,6 +27,7 @@ for argument in CommandLine.arguments.dropFirst() {
     case "--": endOfOptions = true
     case "--ignore-whitespace", "-w": options.ignoreWhitespace = true
     case "--ignore-case", "-i": options.ignoreCase = true
+    case "--ignore-timers", "-t": options.ignoreTimers = true
     case "--stats": mode = .stats
     case "--json": mode = .json
     case "--rows": mode = .rows
@@ -61,7 +62,7 @@ let elapsedMs = Double(DispatchTime.now().uptimeNanoseconds - start) / 1e6
 let hidden = left.hiddenDifferences(from: right)
 let byteIdentical = left.isByteIdentical(to: right) ?? false
 // With an ignore option, differences it hides don't count, as with `diff -w`.
-let ignoring = options.ignoreWhitespace || options.ignoreCase
+let ignoring = options.ignoresAny
 let identical = result.isIdentical && (ignoring || (hidden.isEmpty && byteIdentical))
 
 /// 1-based first line of each side's part of a hunk (for an empty part, the line it

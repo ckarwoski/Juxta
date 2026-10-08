@@ -84,6 +84,7 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Ignore Whitespace", #selector(CompareWindowController.toggleIgnoreWhitespace(_:))))
         menu.addItem(item("Ignore Case", #selector(CompareWindowController.toggleIgnoreCase(_:))))
+        menu.addItem(item("Ignore Timers", #selector(CompareWindowController.toggleIgnoreTimers(_:))))
         menu.addItem(.separator())
         menu.addItem(item("Swap Sides", #selector(CompareWindowController.swapSides(_:)), "s", [.command, .option]))
         menu.addItem(.separator())

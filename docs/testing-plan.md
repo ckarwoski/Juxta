@@ -21,7 +21,8 @@ Already covered by `Tests/JuxtaCoreTests`:
 - Myers is optimal, checked against brute-force LCS on random inputs.
 - Patience produces valid alignments.
 - Rows rebuild both sides; "identical" holds exactly when the line arrays are equal.
-- Similar-line pairing, the ignore options, basic line splitting.
+- Similar-line pairing, the ignore options (whitespace, case, timers), and timer detection
+  including false matches (`TimersTests`), basic line splitting.
 - A 200k-line routing table compares in under 3s.
 
 ## Suspected problems (from reading the code; confirm with the fixtures)
@@ -53,8 +54,8 @@ The worst thing a diff tool can do is say "identical" when the files differ.
 - [x] Invalid UTF-8 only affects its own lines (read as Windows Latin 1), not the whole file.
 - [x] Lines are compared by exact bytes: NFC and NFD forms of the same text used to match.
 - [x] The binary-file alert says which side failed.
-- [x] Random rebuild-both-sides test covers the ignore options; the timeout path was already
-      covered (`testTimeoutIsReportedAndStillValid`).
+- [x] Random rebuild-both-sides test covers the ignore options, and Ignore Timers; the timeout
+      path was already covered (`testTimeoutIsReportedAndStillValid`).
 
 ## Step 2: Compare against git
 
@@ -253,4 +254,5 @@ Manual before release (needs a person or the installed app):
 - **Unified diff export** (for pasting into tickets and change requests)? If yes, add a
   `git apply --check` round-trip to step 2.
 - **Ignore lines matching a pattern** (timestamps, "Last configuration change", counters)?
-  Fixtures 38–40 will show whether it's needed.
+  Fixtures 38–40 will show whether it's needed. Ignore Timers (#2) now covers ages and uptimes
+  (fixtures 22, 23, 39, 40); ignoring lines by pattern, such as fixture 38's header, is still open.

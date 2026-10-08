@@ -1,0 +1,2 @@
+Show commands captured twice: uptime, neighbor and BGP timers and Last input moved on, plus six real changes among values that look like timers (IPv6, MAC, community, time range). Counters held still: Ignore Timers doesn't hide them.
+Look for: With Ignore Timers, six modified lines: OSPF 10.255.0.3 and BGP 10.255.0.3 state, FE80::1:22:34, aabb.1d00.0101, 65000:200 and 18:00; no timer highlighted.
