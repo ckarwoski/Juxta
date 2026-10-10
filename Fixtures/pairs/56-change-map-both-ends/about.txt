@@ -1,0 +1,2 @@
+600 static routes; the first and last lines changed.
+Look for: Markers at the top and bottom of the change map; the bottom gap is larger than the top only when the window's corner is rounded (not in full screen).

@@ -758,6 +758,33 @@ def git_findings():
               "    next\nend\n", 1), "cfg")
 
 
+# MARK: - Change map ends (54-56)
+
+def change_map():
+    def statics(n):
+        return [f"ip route 10.{i // 256}.{i % 256}.0 255.255.255.0 192.168.{i % 4}.1" for i in range(n)]
+
+    left = statics(2000)
+    right = left[:-1] + ["ip route 10.7.207.0 255.255.255.0 192.168.9.1"]
+    small(54, "change-map-last-line", "2000 static routes; only the last line changed.",
+          "In a short window (more rows than track points) the change map's 2 pt marker sits at "
+          "the very end of the track, fully drawn and clear of the window's rounded corner.",
+          join(left) + "\n", join(right) + "\n", "cfg")
+    left = statics(600)
+    right = left + [f"ip route 172.16.{k}.0 255.255.255.0 192.168.0.1" for k in range(30)]
+    small(55, "change-map-block-appended", "600 static routes; 30 more appended at the end.",
+          "Scrolled to the bottom, the knob and the inserted marker both end above the window's "
+          "rounded corner; the track stops level with the left pane's horizontal scroller.",
+          join(left) + "\n", join(right) + "\n", "cfg")
+    left = statics(600)
+    right = ["ip route 0.0.0.0 0.0.0.0 192.168.0.254"] + left[1:-1] + \
+        ["ip route 10.2.87.0 255.255.255.0 192.168.0.254"]
+    small(56, "change-map-both-ends", "600 static routes; the first and last lines changed.",
+          "Markers at the top and bottom of the change map; the bottom gap is larger than the top "
+          "only when the window's corner is rounded (not in full screen).",
+          join(left) + "\n", join(right) + "\n", "cfg")
+
+
 # MARK: - Large inputs (60-67): timing, responsiveness, memory
 
 def perf(huge):
@@ -826,6 +853,7 @@ if __name__ == "__main__":
     show_timers()
     configs()
     git_findings()
+    change_map()
     perf("--huge" in sys.argv)
     (ROOT / "README.md").write_text(README + "\n".join(index) + "\n")
     print(f"Wrote fixtures under {ROOT}")
