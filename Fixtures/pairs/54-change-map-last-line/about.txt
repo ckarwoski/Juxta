@@ -1,0 +1,2 @@
+2000 static routes; only the last line changed.
+Look for: In a short window (more rows than track points) the change map's 2 pt marker sits at the very end of the track, fully drawn and clear of the window's rounded corner.

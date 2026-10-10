@@ -1,0 +1,2 @@
+600 static routes; 30 more appended at the end.
+Look for: Scrolled to the bottom, the knob and the inserted marker both end above the window's rounded corner; the track stops level with the left pane's horizontal scroller.

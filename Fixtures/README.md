@@ -60,6 +60,9 @@ script, not the files. See `docs/testing-plan.md` for how they fit into testing.
 | `pairs/51-xr-vrf-appended` | IOS XR: a blank-separated vrf block appended at the end (batfish xr-vrf-route-target, commit 784e61cb). |
 | `pairs/52-f5-rule-appended` | F5 BIG-IP: two blank-separated ltm rules appended at the end (batfish f5_bigip_structured_ltm_rule, commit 2962380c). |
 | `pairs/53-fortios-edit-appended` | FortiOS: an 'edit ... next' entry appended to a config table (batfish iface_warn, commit 57e8e205). |
+| `pairs/54-change-map-last-line` | 2000 static routes; only the last line changed. |
+| `pairs/55-change-map-block-appended` | 600 static routes; 30 more appended at the end. |
+| `pairs/56-change-map-both-ends` | 600 static routes; the first and last lines changed. |
 | `generated/60-routes-20k-5pct` | TIMED. 20k-line route table, 5% of lines changed. |
 | `generated/61-routes-200k-1pct` | TIMED. 200k-line route table, 1% changed, a block added and removed. |
 | `generated/62-unrelated-20k` | TIMED. Two unrelated 20k-line files. |
