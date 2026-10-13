@@ -345,6 +345,14 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
     override func mouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         guard presentation.document(side) != nil, !presentation.result.rows.isEmpty else { return }
+        // A click in the empty space below the last row selects nothing; a drag or
+        // shift-click there still reaches the last row through `row(at:)`.
+        let point = convert(event.locationInWindow, from: nil)
+        if !event.modifierFlags.contains(.shift),
+           point.y >= CGFloat(presentation.result.rows.count) * presentation.lineHeight {
+            clearSelection()
+            return
+        }
         let clicked = row(at: event)
         if event.clickCount == 2, let hunk = presentation.result.hunk(containing: clicked) {
             let rows = presentation.result.hunks[hunk].rows
