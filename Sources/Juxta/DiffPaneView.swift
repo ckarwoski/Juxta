@@ -169,9 +169,10 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
                 isPlainASCII ? CGFloat(index) * p.charWidth : CTLineGetOffsetForStringIndex(line, index, nil)
             }
 
-            // Under the inline highlights: on changed rows those already mark trailing
-            // whitespace that changed, while this marks it on inserted and deleted rows.
-            if let invisibles, let trailing = invisibles.trailingStart, !selected {
+            // Under the inline highlights. On a changed row, only trailing whitespace that
+            // differs from the other side's is marked, so unchanged spaces don't look changed.
+            if let invisibles, let trailing = invisibles.trailingStart, !selected,
+               row.kind != .changed || trailingWhitespaceDiffers(row) {
                 Theme.trailingWhitespace.setFill()
                 let x0 = offset(trailing)
                 let x1 = offset(invisibles.display.utf16.count)
@@ -328,6 +329,13 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
         attributed.draw(with: NSRect(x: visible.minX + 20, y: top, width: visible.width - 40,
                                      height: textSize.height + 4),
                         options: [.usesLineFragmentOrigin])
+    }
+
+    private func trailingWhitespaceDiffers(_ row: DiffRow) -> Bool {
+        guard let left = presentation.left, let right = presentation.right,
+              row.left >= 0, row.right >= 0 else { return true }
+        return Invisibles.trailingWhitespace(left.lines[Int(row.left)])
+            != Invisibles.trailingWhitespace(right.lines[Int(row.right)])
     }
 
     // MARK: Selection

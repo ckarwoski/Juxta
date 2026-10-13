@@ -105,4 +105,12 @@ final class InvisiblesTests: XCTestCase {
         XCTAssertEqual(badged.maxColumns, 15)
         XCTAssertEqual(Invisibles.extraColumns("a\u{0}b"), 3)
     }
+
+    func testTrailingWhitespace() {
+        XCTAssertEqual(Invisibles.trailingWhitespace("Total number of prefixes 11 "), " ")
+        XCTAssertEqual(Invisibles.trailingWhitespace("a \t\u{A0}"), " \t\u{A0}")
+        XCTAssertEqual(Invisibles.trailingWhitespace("a b"), "")
+        XCTAssertEqual(Invisibles.trailingWhitespace("   "), "   ")
+        XCTAssertEqual(Invisibles.trailingWhitespace(""), "")
+    }
 }

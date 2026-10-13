@@ -128,7 +128,7 @@ public enum Invisibles {
         if atLineEnd {
             var start = displayOffset
             for scalar in scalars.reversed() {
-                guard scalar == " " || scalar == "\t" || isUnusualSpace(scalar) else { break }
+                guard isTrailingSpace(scalar) else { break }
                 start -= scalar.utf16.count
                 if scalar == " " { markers.append(Marker(kind: .space, range: start..<start + 1, trailing: true)) }
             }
@@ -149,6 +149,20 @@ public enum Invisibles {
         var layout = Layout(display: text, markers: markers, trailingStart: trailingStart)
         layout.shifts = shifts
         return layout
+    }
+
+    /// The whitespace at the end of `line`, as `layout` marks it.
+    public static func trailingWhitespace(_ line: String) -> String {
+        let scalars = line.unicodeScalars
+        var start = scalars.endIndex
+        while start > scalars.startIndex, isTrailingSpace(scalars[scalars.index(before: start)]) {
+            start = scalars.index(before: start)
+        }
+        return String(scalars[start...])
+    }
+
+    private static func isTrailingSpace(_ scalar: Unicode.Scalar) -> Bool {
+        scalar == " " || scalar == "\t" || isUnusualSpace(scalar)
     }
 
     public static func layout(_ line: String) -> Layout? {
