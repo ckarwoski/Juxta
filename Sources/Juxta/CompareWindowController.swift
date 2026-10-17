@@ -315,6 +315,10 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         documentsChanged(restoring: anchor)
     }
 
+    func paste(_ text: String, into side: Side) {
+        setPastedText(text, on: side)
+    }
+
     /// Shows the interim result the presentation installed for the new documents,
     /// then compares them.
     private func documentsChanged(restoring anchor: (side: Side, line: Int)? = nil) {
@@ -839,14 +843,10 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         load(left: presentation.left?.url, right: presentation.right?.url)
     }
 
-    private var clipboardText: String? {
-        NSPasteboard.general.string(forType: .string)
-    }
-
     /// Pasting fills the first free side (no document and none loading); once both
     /// are taken it replaces the focused side.
     @objc func paste(_ sender: Any?) {
-        guard let text = clipboardText else { return NSSound.beep() }
+        guard let text = NSPasteboard.general.text else { return NSSound.beep() }
         if let side = freeSides.first {
             setPastedText(text, on: side)
         } else if let side = focusedSide {
@@ -857,12 +857,12 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     @objc func pasteAsLeft(_ sender: Any?) {
-        guard let text = clipboardText else { return NSSound.beep() }
+        guard let text = NSPasteboard.general.text else { return NSSound.beep() }
         setPastedText(text, on: .left)
     }
 
     @objc func pasteAsRight(_ sender: Any?) {
-        guard let text = clipboardText else { return NSSound.beep() }
+        guard let text = NSPasteboard.general.text else { return NSSound.beep() }
         setPastedText(text, on: .right)
     }
 
@@ -934,9 +934,9 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         case #selector(swapSides(_:)):
             return !isEmpty
         case #selector(paste(_:)):
-            return clipboardText != nil && (!freeSides.isEmpty || focusedSide != nil)
+            return NSPasteboard.general.text != nil && (!freeSides.isEmpty || focusedSide != nil)
         case #selector(pasteAsLeft(_:)), #selector(pasteAsRight(_:)):
-            return clipboardText != nil
+            return NSPasteboard.general.text != nil
         case #selector(increaseFontSize(_:)):
             return presentation.textStyle.effectiveSize < TextStyle.sizes.upperBound
         case #selector(decreaseFontSize(_:)):

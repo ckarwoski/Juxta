@@ -83,13 +83,7 @@ final class PaneView: NSView {
     // MARK: Drag and drop
 
     private func fileURLs(from info: NSDraggingInfo) -> [URL] {
-        let urls = info.draggingPasteboard.readObjects(
-            forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
-        return urls.filter { url in
-            var isDirectory: ObjCBool = false
-            return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
-                && !isDirectory.boolValue
-        }
+        info.draggingPasteboard.fileURLs
     }
 
     override func draggingEntered(_ sender: NSDraggingInfo) -> NSDragOperation {
