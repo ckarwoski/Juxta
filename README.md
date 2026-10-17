@@ -37,7 +37,8 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
   or the **Open…** button in each pane header. From Terminal: `juxta before.cfg after.cfg`.
 - **Paste text:** ⌘V fills the first empty side, so you can paste `show run` from one device and
   then the other. Once both sides are filled, ⌘V replaces the focused pane. Use ⌥⌘V to paste
-  on the left or ⇧⌥⌘V to paste on the right.
+  on the left or ⇧⌥⌘V to paste on the right. ⇧⌘N (File › New Comparison from Clipboard) starts
+  a new window with the clipboard on the left, or opens the files if you copied them in Finder.
 - **Navigate:** ⌥⌘↓ / ⌥⌘↑ (or `n` / `p`, `j` / `k` when a pane is focused), toolbar chevrons,
   or click anywhere in the change map on the right edge.
 - **Colors:** blue = modified line (changed characters highlighted), red = removed,
