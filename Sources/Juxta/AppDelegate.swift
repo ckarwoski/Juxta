@@ -33,6 +33,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
         openFiles(urls)
     }
 
+    func applicationDockMenu(_ sender: NSApplication) -> NSMenu? {
+        let menu = NSMenu()
+        menu.addItem(withTitle: "New Comparison", action: #selector(newComparison(_:)), keyEquivalent: "")
+        menu.addItem(withTitle: "New Comparison from Clipboard",
+                     action: #selector(newComparisonFromClipboard(_:)), keyEquivalent: "")
+        for item in menu.items { item.target = self }
+        return menu
+    }
+
     /// Paths given on the command line (skipping AppKit's `-Key value` arguments).
     private static func fileArguments() -> [URL] {
         var urls: [URL] = []
