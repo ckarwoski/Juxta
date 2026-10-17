@@ -74,6 +74,48 @@ final class InvisiblesTests: XCTestCase {
         XCTAssertEqual(layout.display.utf16.count, 12)
     }
 
+    func testSourceOffsetSnapsInsideBadgeToNearerEdge() throws {
+        let layout = try XCTUnwrap(Invisibles.layout("65001:\u{200B}100"))
+        XCTAssertEqual(layout.display, "65001:      100")
+        XCTAssertEqual(layout.sourceOffset(0), 0)
+        XCTAssertEqual(layout.sourceOffset(6), 6) // badge start
+        XCTAssertEqual(layout.sourceOffset(7), 6)
+        XCTAssertEqual(layout.sourceOffset(9), 6) // halfway goes to the start
+        XCTAssertEqual(layout.sourceOffset(10), 7)
+        XCTAssertEqual(layout.sourceOffset(12), 7) // badge end
+        XCTAssertEqual(layout.sourceOffset(15), 10) // end of line
+    }
+
+    func testSourceOffsetAfterSeveralBadges() throws {
+        // a NUL b BEL c: three-column badges at 1..<4 and 5..<8.
+        let layout = try XCTUnwrap(Invisibles.layout("a\u{0}b\u{7}c"))
+        XCTAssertEqual((0...9).map(layout.sourceOffset), [0, 1, 1, 2, 2, 3, 3, 4, 4, 5])
+    }
+
+    func testSourceOffsetIgnoresTabsAndWideCharacters() throws {
+        // A tab is one character in the display string however wide it is drawn, and
+        // wide or combining characters aren't replaced, so only badges move offsets.
+        let layout = try XCTUnwrap(Invisibles.layout("\t東京\u{200B}e\u{301}📍"))
+        XCTAssertEqual(layout.display, "\t東京      e\u{301}📍")
+        XCTAssertEqual(layout.sourceOffset(1), 1)
+        XCTAssertEqual(layout.sourceOffset(3), 3)
+        XCTAssertEqual(layout.sourceOffset(9), 4)
+        XCTAssertEqual(layout.sourceOffset(11), 6)
+        XCTAssertEqual(layout.sourceOffset(13), 8)
+    }
+
+    func testSourceOffsetRoundTrips() throws {
+        for line in ["\u{200B}📍x\u{7}", "a\u{0}b\u{7}c", "\tx\u{FEFF}\u{FEFF}y  ", "e\u{301}\u{AD}東"] {
+            let layout = try XCTUnwrap(Invisibles.layout(line), line)
+            // Every offset between characters, and the end of the line.
+            var offsets = [0]
+            for scalar in line.unicodeScalars { offsets.append(offsets.last! + scalar.utf16.count) }
+            for offset in offsets {
+                XCTAssertEqual(layout.sourceOffset(layout.displayOffset(offset)), offset, "\(line) at \(offset)")
+            }
+        }
+    }
+
     func testTrailingWhitespaceIsMarked() throws {
         let layout = try XCTUnwrap(Invisibles.layout("mtu 9000 \t "))
         XCTAssertEqual(layout.trailingStart, 8)

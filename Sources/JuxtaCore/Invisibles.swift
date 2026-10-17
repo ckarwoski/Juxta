@@ -7,7 +7,7 @@ import Foundation
 /// shown as a badge naming them. The badge needs room, so the line is laid out from a
 /// display string in which each such character is replaced by spaces as wide as its
 /// label; the badge is then drawn over those spaces. `displayOffset(_:)` maps UTF-16
-/// offsets in the line to offsets in that string.
+/// offsets in the line to offsets in that string, and `sourceOffset(_:)` maps back.
 public enum Invisibles {
     public enum Kind: Equatable, Sendable {
         case tab
@@ -33,11 +33,13 @@ public enum Invisibles {
         public var markers: [Marker]
         /// Start of the trailing whitespace in `display`, if any.
         public var trailingStart: Int?
-        /// Line offset and growth for each badge, in line order.
+        /// Line offset, width and growth for each badge, in line order.
         var shifts: [Shift] = []
 
         struct Shift: Equatable, Sendable {
             var offset: Int
+            /// UTF-16 width of the badged character in the line.
+            var width: Int
             var growth: Int
         }
 
@@ -49,6 +51,23 @@ public enum Invisibles {
                 result += shift.growth
             }
             return result
+        }
+
+        /// Maps a UTF-16 offset in `display` back to one in the line, the inverse of
+        /// `displayOffset(_:)`. An offset inside a badge goes to the nearer edge of the
+        /// character it stands for (the start, when halfway).
+        public func sourceOffset(_ displayOffset: Int) -> Int {
+            var growth = 0
+            for shift in shifts {
+                let start = shift.offset + growth
+                guard start < displayOffset else { break }
+                let length = shift.width + shift.growth
+                if displayOffset < start + length {
+                    return (displayOffset - start) * 2 <= length ? shift.offset : shift.offset + shift.width
+                }
+                growth += shift.growth
+            }
+            return displayOffset - growth
         }
     }
 
@@ -116,7 +135,7 @@ public enum Invisibles {
                 display.append(contentsOf: String(repeating: " ", count: label.count).unicodeScalars)
                 copiedUpTo = scalars.index(after: index)
                 markers.append(Marker(kind: .badge(label), range: displayOffset..<displayOffset + label.count, trailing: false))
-                shifts.append(Layout.Shift(offset: offset, growth: label.count - width))
+                shifts.append(Layout.Shift(offset: offset, width: width, growth: label.count - width))
                 displayOffset += label.count - width
             }
             offset += width
