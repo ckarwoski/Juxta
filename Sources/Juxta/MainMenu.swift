@@ -53,6 +53,8 @@ enum MainMenu {
     private static func fileMenu() -> NSMenu {
         let menu = NSMenu(title: "File")
         menu.addItem(item("New Comparison", #selector(AppDelegate.newComparison(_:)), "n"))
+        menu.addItem(item("New Comparison from Clipboard", #selector(AppDelegate.newComparisonFromClipboard(_:)),
+                          "n", [.command, .shift]))
         menu.addItem(item("Open…", #selector(AppDelegate.openDocument(_:)), "o"))
         menu.addItem(.separator())
         menu.addItem(item("Open Left File…", #selector(CompareWindowController.chooseLeftFile(_:)), "1", [.command, .option]))

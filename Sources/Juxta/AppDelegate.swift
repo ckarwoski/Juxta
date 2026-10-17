@@ -1,6 +1,6 @@
 import AppKit
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     private var controllers: [CompareWindowController] = []
 
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -90,6 +90,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         makeController()
     }
 
+    /// Always opens a new window, since the front one is usually already full. Copied
+    /// files open like dropped ones; Finder also puts their names on the clipboard as text.
+    @objc func newComparisonFromClipboard(_ sender: Any?) {
+        let pasteboard = NSPasteboard.general
+        let urls = pasteboard.fileURLs
+        if !urls.isEmpty {
+            makeController().load(left: urls.first, right: urls.dropFirst().first)
+        } else if let text = pasteboard.text {
+            makeController().paste(text, into: .left)
+        } else {
+            NSSound.beep()
+        }
+    }
+
     @objc func showSettings(_ sender: Any?) {
         SettingsWindowController.shared.showWindow(sender)
     }
@@ -104,5 +118,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             guard response == .OK else { return }
             self?.openFiles(panel.urls)
         }
+    }
+
+    func validateMenuItem(_ item: NSMenuItem) -> Bool {
+        if item.action == #selector(newComparisonFromClipboard(_:)) {
+            let pasteboard = NSPasteboard.general
+            return pasteboard.text != nil || !pasteboard.fileURLs.isEmpty
+        }
+        return true
     }
 }
