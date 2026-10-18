@@ -685,6 +685,12 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
         visibleRowRange.filter { selectedSpan(row: $0) != nil }.map(element(row:))
     }
 
+    /// The selected text, as copying it would give, so VoiceOver can read part of a line.
+    override func accessibilitySelectedText() -> String? {
+        guard let selection, !selection.isEmpty, let document = presentation.document(side) else { return nil }
+        return selection.text(in: presentation.result, on: sideKey, lines: document.lines)
+    }
+
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
         guard let window else { return self }
         let local = convert(window.convertPoint(fromScreen: point), from: nil)
