@@ -54,7 +54,11 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
   Changes apply to every open window as you make them.
 - ⌘R reloads both files from disk, ⌥⌘S swaps sides. ⌘+ / ⌘− make the text bigger or smaller in
   every window; ⌘0 (Actual Size) goes back to the size set in Settings.
-- Click, shift-click or drag to select lines, double-click to select a whole change, ⌘C to copy.
+- **Select and copy:** in the text, drag to select characters, double-click for a word (an
+  address like `10.1.1.1/24` or an interface name selects whole), triple-click for the line, and
+  shift-click to extend. In the line numbers, click, shift-click or drag to select lines, and
+  double-click to select a whole change. ⌘C copies the file's text: tabs and invisible
+  characters copy as themselves.
 
 ### git difftool
 
