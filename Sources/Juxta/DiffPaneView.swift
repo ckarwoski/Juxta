@@ -234,6 +234,25 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
             if let invisibles { index = invisibles.displayOffset(index) }
             return originX + offset(index)
         }
+
+        /// The UTF-16 offset in the line at x in the view, the inverse of `x(lineOffset:)`,
+        /// clamped to the line's `length`.
+        func lineOffset(atX x: CGFloat, rounding: HitTest.Rounding, length: Int) -> Int {
+            let local = x - originX
+            let displayLength = CTLineGetStringRange(line).length
+            var index: Int
+            if isPlainASCII {
+                index = HitTest.offset(atX: local, charWidth: charWidth, length: displayLength, rounding: rounding)
+            } else {
+                // The caret position nearest the point.
+                index = CTLineGetStringIndexForPosition(line, CGPoint(x: local, y: 0))
+                if index == kCFNotFound || index < 0 { index = local <= 0 ? 0 : displayLength }
+                index = min(index, displayLength)
+                if rounding == .characterUnder, index > 0, offset(index) > local { index -= 1 }
+            }
+            if let invisibles { index = HitTest.sourceOffset(index, in: invisibles, rounding: rounding) }
+            return min(start + index, length)
+        }
     }
 
     /// Lays out `text`, the line shown in `row`, to draw the part of it inside `rect`.
@@ -393,6 +412,28 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
         let point = convert(event.locationInWindow, from: nil)
         let count = presentation.result.rows.count
         return min(max(Int(point.y / presentation.lineHeight), 0), max(count - 1, 0))
+    }
+
+    /// The row and line offset at `point`, laid out as the row is drawn. Above the first
+    /// row is the start of the first line and below the last row the end of the last,
+    /// so dragging past either selects to there; a filler row has only offset 0.
+    private func position(at point: NSPoint, rounding: HitTest.Rounding) -> TextSelection.Position {
+        let p = presentation
+        let rows = p.result.rows
+        guard let document = p.document(side), !rows.isEmpty, point.y >= 0 else { return .init(row: 0, offset: 0) }
+        let line = { (row: Int) -> String? in
+            let index = p.lineIndex(row: row, side: self.side)
+            return index >= 0 ? document.lines[index] : nil
+        }
+        let row = Int(point.y / p.lineHeight)
+        guard row < rows.count else {
+            return .init(row: rows.count - 1, offset: line(rows.count - 1)?.utf16.count ?? 0)
+        }
+        guard let text = line(row), !text.isEmpty else { return .init(row: row, offset: 0) }
+        // A long line is sliced around the point, as it is drawn around the dirty rect.
+        let layout = rowLayout(text, row: rows[row], in: NSRect(x: point.x, y: CGFloat(row) * p.lineHeight,
+                                                                width: 0, height: p.lineHeight))
+        return .init(row: row, offset: layout.lineOffset(atX: point.x, rounding: rounding, length: text.utf16.count))
     }
 
     /// Selects whole rows, as clicking and dragging in the line-number gutter does.
