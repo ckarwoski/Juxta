@@ -28,8 +28,10 @@ public struct TextSelection: Equatable, Sendable {
         }
     }
 
-    public var anchor: Position
-    public var head: Position
+    /// Set through the initializers, so a selection is either characters or whole rows:
+    /// moving an end of a whole-row selection would leave `wholeRows` wrong.
+    public private(set) var anchor: Position
+    public private(set) var head: Position
     /// Selected by rows (in the gutter, or a whole change), not characters: every row
     /// from `start` to `end` is selected through its line end, even an empty one.
     public private(set) var wholeRows = false
@@ -89,12 +91,58 @@ public struct TextSelection: Equatable, Sendable {
         let rows = (start.row..<end.row + 1).clamped(to: result.rows.indices)
         return rows.compactMap { row -> Substring? in
             guard let line = Self.line(row, in: result, on: side, lines: lines) else { return nil }
+            if wholeRows { return line[...] }
             let utf16 = line.utf16
-            let lower = row == start.row && !wholeRows ? min(start.offset, utf16.count) : 0
-            let upper = row == end.row && !wholeRows ? min(end.offset, utf16.count) : utf16.count
+            let lower = row == start.row ? min(start.offset, utf16.count) : 0
+            let upper = row == end.row ? min(end.offset, utf16.count) : utf16.count
             guard lower < upper else { return "" }
             return line[utf16.index(utf16.startIndex, offsetBy: lower)..<utf16.index(utf16.startIndex, offsetBy: upper)]
         }.joined(separator: "\n")
+    }
+
+    // MARK: Extending
+
+    /// What a click selects, and so what dragging after it extends the selection by.
+    public enum Unit: Sendable {
+        /// A click or drag in the text.
+        case character
+        /// A double-click in the text.
+        case word
+        /// A triple-click in the text.
+        case line
+        /// A click in the line-number gutter, which selects whole rows.
+        case row
+    }
+
+    /// The positions `unit` covers at `position`, in a row showing `line` (nil for a
+    /// filler row): an empty range for a character, the word around the character at
+    /// `position` (see `Words`), or the whole line for a line or a row. Offsets past
+    /// the end of the line are clamped; a filler row has only offset 0.
+    public static func range(of unit: Unit, at position: Position, line: String?) -> Range<Position> {
+        let row = position.row
+        let length = line?.utf16.count ?? 0
+        switch unit {
+        case .character:
+            let at = Position(row: row, offset: min(max(position.offset, 0), length))
+            return at..<at
+        case .word:
+            let word = line.map { Words.range(at: max(position.offset, 0), in: $0) } ?? 0..<0
+            return Position(row: row, offset: word.lowerBound)..<Position(row: row, offset: word.upperBound)
+        case .line, .row:
+            return Position(row: row, offset: 0)..<Position(row: row, offset: length)
+        }
+    }
+
+    /// Characters from `origin`, what a gesture first selected, to `target`, the same
+    /// unit where the mouse is now. All of `origin` stays selected, as when dragging
+    /// after a double-click in a text view: going back past its start anchors at its
+    /// end. For rows, pass the rows of the result to `init(rows:to:in:on:lines:)`.
+    public init(from origin: Range<Position>, to target: Range<Position>) {
+        if target.lowerBound < origin.lowerBound {
+            self.init(anchor: origin.upperBound, head: target.lowerBound)
+        } else {
+            self.init(anchor: origin.lowerBound, head: max(origin.upperBound, target.upperBound))
+        }
     }
 
     /// The line shown on `side` in `row`, or nil on a filler row.

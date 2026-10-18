@@ -195,4 +195,66 @@ final class TextSelectionTests: XCTestCase {
         let saved = TextSelection.Saved(anchor: .init(line: 7, offset: 0), head: .init(line: 9, offset: 1))
         XCTAssertNil(TextSelection(saved, in: result, on: \.left))
     }
+
+    private func position(_ row: Int, _ offset: Int) -> TextSelection.Position {
+        .init(row: row, offset: offset)
+    }
+
+    func testRangesOfEachUnit() {
+        let line = left[1] // " ip address 10.1.1.1/24"
+        XCTAssertEqual(TextSelection.range(of: .character, at: position(1, 4), line: line), position(1, 4)..<position(1, 4))
+        XCTAssertEqual(TextSelection.range(of: .character, at: position(1, 40), line: line),
+                       position(1, 23)..<position(1, 23))
+        XCTAssertEqual(TextSelection.range(of: .word, at: position(1, 15), line: line), position(1, 12)..<position(1, 23))
+        XCTAssertEqual(TextSelection.range(of: .word, at: position(1, 2), line: line), position(1, 1)..<position(1, 3))
+        // Past the end, the last word; a space is a word of its own.
+        XCTAssertEqual(TextSelection.range(of: .word, at: position(1, 23), line: line), position(1, 12)..<position(1, 23))
+        XCTAssertEqual(TextSelection.range(of: .word, at: position(1, 0), line: line), position(1, 0)..<position(1, 1))
+        XCTAssertEqual(TextSelection.range(of: .line, at: position(1, 7), line: line), position(1, 0)..<position(1, 23))
+        XCTAssertEqual(TextSelection.range(of: .row, at: position(1, 7), line: line), position(1, 0)..<position(1, 23))
+        // Filler rows and empty lines have only offset 0.
+        for unit in [TextSelection.Unit.character, .word, .line, .row] {
+            XCTAssertEqual(TextSelection.range(of: unit, at: position(2, 5), line: nil), position(2, 0)..<position(2, 0))
+            XCTAssertEqual(TextSelection.range(of: unit, at: position(3, 5), line: ""), position(3, 0)..<position(3, 0))
+        }
+    }
+
+    func testExtendingByCharacters() {
+        let origin = position(1, 4)..<position(1, 4)
+        let forward = TextSelection(from: origin, to: position(3, 0)..<position(3, 0))
+        XCTAssertEqual(forward, selection((1, 4), (3, 0)))
+        XCTAssertEqual(TextSelection(from: origin, to: position(0, 2)..<position(0, 2)), selection((1, 4), (0, 2)))
+        XCTAssertTrue(TextSelection(from: origin, to: origin).isEmpty)
+        XCTAssertFalse(forward.wholeRows)
+    }
+
+    func testExtendingByWordsKeepsTheFirstWord() {
+        let line = left[1]
+        let word = TextSelection.range(of: .word, at: position(1, 15), line: line) // 10.1.1.1/24
+        // Within the word, just the word.
+        XCTAssertEqual(leftText(TextSelection(from: word, to: TextSelection.range(of: .word, at: position(1, 20), line: line))),
+                       "10.1.1.1/24")
+        // Back to "ip": anchored at the end of the first word.
+        let back = TextSelection(from: word, to: TextSelection.range(of: .word, at: position(1, 2), line: line))
+        XCTAssertEqual(back, selection((1, 23), (1, 1)))
+        XCTAssertEqual(leftText(back), "ip address 10.1.1.1/24")
+        // On to "shutdown" on row 4.
+        let on = TextSelection(from: word, to: TextSelection.range(of: .word, at: position(4, 3), line: left[3]))
+        XCTAssertEqual(leftText(on), "10.1.1.1/24\n\n shutdown")
+        // A shift-click by characters from a word keeps the word too.
+        XCTAssertEqual(leftText(TextSelection(from: word, to: position(1, 4)..<position(1, 4))), "address 10.1.1.1/24")
+    }
+
+    func testExtendingByLinesAndRows() {
+        let line = TextSelection.range(of: .line, at: position(3, 0), line: left[2])
+        let down = TextSelection(from: line, to: TextSelection.range(of: .line, at: position(4, 2), line: left[3]))
+        XCTAssertEqual(down, selection((3, 0), (4, 9)))
+        let up = TextSelection(from: line, to: TextSelection.range(of: .line, at: position(1, 2), line: left[1]))
+        XCTAssertEqual(leftText(up), " ip address 10.1.1.1/24\n")
+        // Rows extend the same way, then select whole rows from anchor to head.
+        let change = position(1, 0)..<position(2, 0)
+        let rows = TextSelection(from: change, to: TextSelection.range(of: .row, at: position(0, 0), line: left[0]))
+        XCTAssertEqual(TextSelection(rows: rows.anchor.row, to: rows.head.row, in: result, on: \.left, lines: left),
+                       TextSelection(rows: 2, to: 0, in: result, on: \.left, lines: left))
+    }
 }
