@@ -1,10 +1,12 @@
 #if DEBUG
 import AppKit
+import JuxtaCore
 
 /// Development aid: `JUXTA_SNAPSHOT=/path/prefix` renders the front window to PNGs
 /// (initial state, then after "next change" steps given by JUXTA_STEPS) and quits.
 /// `JUXTA_SLOW_COMPARE=<seconds>` keeps the comparison running to capture the progress bar.
-/// `JUXTA_ACTIONS=next,swap,reload,prev,bigger,smaller,actual` runs those steps instead of JUXTA_STEPS "next"s;
+/// `JUXTA_ACTIONS=next,swap,reload,prev,bigger,smaller,actual,select,selectall` runs those steps instead
+/// of JUXTA_STEPS "next"s (`select` selects characters on the left and the change on the right);
 /// `JUXTA_HC=1` uses the Increase Contrast appearance (with JUXTA_DARK, the dark one);
 /// `JUXTA_AX=1` prints what VoiceOver would see after each capture; `JUXTA_SETTINGS=1` also
 /// captures the Settings window.
@@ -62,6 +64,8 @@ enum DebugSnapshot {
         case "bigger": controller.increaseFontSize(nil)
         case "smaller": controller.decreaseFontSize(nil)
         case "actual": controller.resetFontSize(nil)
+        case "select": select(controller)
+        case "selectall": controller.debugPanes[0].selectAll(nil)
         default: controller.goToNextChange(nil)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
@@ -72,6 +76,20 @@ enum DebugSnapshot {
             capture(window, "\(prefix)-\(n).png")
             step(n + 1, of: steps, controller, window, prefix)
         }
+    }
+
+    /// In the change navigated to (or the first), characters from the first row to two
+    /// rows on in the left pane, and the whole change in the right one.
+    private static func select(_ controller: CompareWindowController) {
+        let p = controller.presentation
+        guard let hunk = p.currentHunk ?? (p.result.hunks.isEmpty ? nil : 0),
+              let right = p.right else { return }
+        let rows = p.result.hunks[hunk].rows
+        let panes = controller.debugPanes
+        panes[0].selection = TextSelection(anchor: .init(row: rows.lowerBound, offset: 3),
+                                           head: .init(row: rows.lowerBound + 2, offset: 9))
+        panes[1].selection = TextSelection(rows: rows.lowerBound, to: rows.upperBound - 1, in: p.result,
+                                           on: \.right, lines: right.lines)
     }
 
     /// Labels of the panes' visible rows and the change map, as VoiceOver gets them.

@@ -714,6 +714,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     #if DEBUG
     var lastAnnouncement: String?
+    var debugPanes: [DiffPaneView] { [leftPane.diffView, rightPane.diffView] }
     #endif
 
     /// Navigating only scrolls, which VoiceOver doesn't report, so say where we landed:

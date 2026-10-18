@@ -10,7 +10,7 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
     /// Called when selection changes so the line-number gutter can repaint.
     var onSelectionChange: (() -> Void)?
 
-    private(set) var selection: TextSelection? {
+    var selection: TextSelection? {
         didSet {
             needsDisplay = true
             onSelectionChange?()
