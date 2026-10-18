@@ -142,33 +142,10 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
 
             let text = document.lines[index]
             if text.isEmpty { continue }
-            // Laying out and drawing a huge line is slow even when clipped, so for long
-            // lines only the columns inside dirtyRect are shaped, placed at their column.
-            var shaped = text
-            var columns: Range<Int>?
-            if let visible = visibleColumns(of: text, in: dirtyRect) {
-                let utf8 = text.utf8
-                shaped = String(text[utf8.index(utf8.startIndex, offsetBy: visible.lowerBound)
-                                     ..< utf8.index(utf8.startIndex, offsetBy: visible.upperBound)])
-                columns = visible
-            }
-            let start = columns?.lowerBound ?? 0
-            let originX = p.textInset + CGFloat(start) * p.charWidth
-            // Invisibles are marked only on rows that differ: there they can explain the
-            // difference, elsewhere they would be clutter.
-            let atLineEnd = columns.map { $0.upperBound == text.utf8.count } ?? true
-            let invisibles = row.kind == .same ? nil : Invisibles.layout(shaped[...], atLineEnd: atLineEnd)
-            let display = invisibles?.display ?? shaped
-            let line = CTLineCreateWithAttributedString(NSAttributedString(string: display, attributes: p.textAttributes))
-            // CTLineGetOffsetForStringIndex analyzes the line's grapheme clusters, which was
-            // most of the time spent drawing a screen of changed rows. In printable ASCII
-            // every character is one column of the monospaced font, so offsets are exact
-            // (checked against CoreText for every printable pair at 8–36 pt). This relies on
-            // DiffPresentation's font having no kerning or ligatures, like visibleColumns.
-            let isPlainASCII = display.utf8.allSatisfy { $0 >= 0x20 && $0 < 0x7F }
-            func offset(_ index: Int) -> CGFloat {
-                isPlainASCII ? CGFloat(index) * p.charWidth : CTLineGetOffsetForStringIndex(line, index, nil)
-            }
+            let layout = rowLayout(text, row: row, in: dirtyRect)
+            let columns = layout.columns, start = layout.start, originX = layout.originX
+            let invisibles = layout.invisibles
+            let offset = layout.offset
 
             // Under the inline highlights. On a changed row, only trailing whitespace that
             // differs from the other side's is marked, so unchanged spaces don't look changed.
@@ -201,21 +178,14 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
                 }
             }
             if let span, !selected {
-                // Line offsets to x, through the slice and the invisibles as above.
-                func x(_ lineOffset: Int) -> CGFloat {
-                    var index = lineOffset
-                    if let columns { index = min(max(index, columns.lowerBound), columns.upperBound) - start }
-                    if let invisibles { index = invisibles.displayOffset(index) }
-                    return originX + offset(index)
-                }
-                let x0 = x(span.offsets.lowerBound)
-                let x1 = span.throughLineEnd ? rowRect.maxX : x(span.offsets.upperBound)
+                let x0 = layout.x(lineOffset: span.offsets.lowerBound)
+                let x1 = span.throughLineEnd ? rowRect.maxX : layout.x(lineOffset: span.offsets.upperBound)
                 selectionColor.setFill()
                 NSRect(x: x0, y: y, width: max(x1 - x0, 0), height: lh).fill()
             }
             ctx.setFillColor(textColor)
             ctx.textPosition = CGPoint(x: originX, y: y + p.baseline)
-            CTLineDraw(line, ctx)
+            CTLineDraw(layout.line, ctx)
             if let invisibles { drawInvisibles(invisibles, offset: offset, originX: originX, y: y, in: ctx) }
         }
 
@@ -227,6 +197,71 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
                 NSRect(x: dirtyRect.minX, y: edge, width: dirtyRect.width, height: 1.5).fill()
             }
         }
+    }
+
+    /// How a row's line is laid out and where it is placed. Drawing and hit testing both
+    /// use it, so a click lands on the character drawn under it.
+    private struct RowLayout {
+        /// The columns of a long line that were laid out, or nil for the whole line.
+        let columns: Range<Int>?
+        /// Where the laid-out text starts: the text inset, plus the columns before a slice.
+        let originX: CGFloat
+        /// Marks for invisible characters, on rows that differ; nil when there are none.
+        let invisibles: Invisibles.Layout?
+        /// The display string: the slice, with badged characters replaced by spaces.
+        let line: CTLine
+        let isPlainASCII: Bool
+        let charWidth: CGFloat
+
+        /// Line offset of the first character laid out.
+        var start: Int { columns?.lowerBound ?? 0 }
+
+        /// x of a UTF-16 index in the display string, from `originX`.
+        /// CTLineGetOffsetForStringIndex analyzes the line's grapheme clusters, which was
+        /// most of the time spent drawing a screen of changed rows. In printable ASCII
+        /// every character is one column of the monospaced font, so offsets are exact
+        /// (checked against CoreText for every printable pair at 8–36 pt). This relies on
+        /// DiffPresentation's font having no kerning or ligatures, like visibleColumns.
+        func offset(_ index: Int) -> CGFloat {
+            isPlainASCII ? CGFloat(index) * charWidth : CTLineGetOffsetForStringIndex(line, index, nil)
+        }
+
+        /// x in the view of a UTF-16 offset in the line, through the slice and the
+        /// invisibles; offsets outside the slice go to its edges.
+        func x(lineOffset: Int) -> CGFloat {
+            var index = lineOffset
+            if let columns { index = min(max(index, columns.lowerBound), columns.upperBound) - start }
+            if let invisibles { index = invisibles.displayOffset(index) }
+            return originX + offset(index)
+        }
+    }
+
+    /// Lays out `text`, the line shown in `row`, to draw the part of it inside `rect`.
+    private func rowLayout(_ text: String, row: DiffRow, in rect: NSRect) -> RowLayout {
+        let p = presentation
+        // Laying out and drawing a huge line is slow even when clipped, so for long
+        // lines only the columns inside rect are shaped, placed at their column.
+        var shaped = text
+        var columns: Range<Int>?
+        if let visible = visibleColumns(of: text, in: rect) {
+            let utf8 = text.utf8
+            shaped = String(text[utf8.index(utf8.startIndex, offsetBy: visible.lowerBound)
+                                 ..< utf8.index(utf8.startIndex, offsetBy: visible.upperBound)])
+            columns = visible
+        }
+        let start = columns?.lowerBound ?? 0
+        // Invisibles are marked only on rows that differ: there they can explain the
+        // difference, elsewhere they would be clutter.
+        let atLineEnd = columns.map { $0.upperBound == text.utf8.count } ?? true
+        let invisibles = row.kind == .same ? nil : Invisibles.layout(shaped[...], atLineEnd: atLineEnd)
+        let display = invisibles?.display ?? shaped
+        return RowLayout(
+            columns: columns,
+            originX: p.textInset + CGFloat(start) * p.charWidth,
+            invisibles: invisibles,
+            line: CTLineCreateWithAttributedString(NSAttributedString(string: display, attributes: p.textAttributes)),
+            isPlainASCII: display.utf8.allSatisfy { $0 >= 0x20 && $0 < 0x7F },
+            charWidth: p.charWidth)
     }
 
     /// Draws faint marks for whitespace and badges for characters that draw nothing.
