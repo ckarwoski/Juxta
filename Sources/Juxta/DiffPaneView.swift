@@ -91,6 +91,12 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
         if frame.size != size { setFrameSize(size) }
     }
 
+    /// An I-beam over the text, once there is some; the gutter keeps the arrow. Rects
+    /// are reset when the frame changes and by `PaneView.refresh`.
+    override func resetCursorRects() {
+        if presentation.document(side) != nil { addCursorRect(bounds, cursor: .iBeam) }
+    }
+
     // MARK: Drawing
 
     override func draw(_ dirtyRect: NSRect) {

@@ -75,6 +75,7 @@ final class PaneView: NSView {
         lineNumberWidth.constant = lineNumbers.requiredWidth
         layoutSubtreeIfNeeded()
         diffView.updateSize()
+        window?.invalidateCursorRects(for: diffView)
         diffView.needsDisplay = true
         diffView.accessibilityRowsChanged()
         lineNumbers.needsDisplay = true
