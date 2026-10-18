@@ -6,7 +6,9 @@ import JuxtaCore
 /// (initial state, then after "next change" steps given by JUXTA_STEPS) and quits.
 /// `JUXTA_SLOW_COMPARE=<seconds>` keeps the comparison running to capture the progress bar.
 /// `JUXTA_ACTIONS=next,swap,reload,prev,bigger,smaller,actual,select,selectall` runs those steps instead
-/// of JUXTA_STEPS "next"s (`select` selects characters on the left and the change on the right);
+/// of JUXTA_STEPS "next"s (`select` selects characters on the left and the change on the right).
+/// `drag`, `word`, `worddrag`, `line`, `shift` and `gutter` send the panes mouse events in the change,
+/// like `select` does directly, and print what each pane would copy;
 /// `JUXTA_HC=1` uses the Increase Contrast appearance (with JUXTA_DARK, the dark one);
 /// `JUXTA_AX=1` prints what VoiceOver would see after each capture; `JUXTA_SETTINGS=1` also
 /// captures the Settings window.
@@ -66,12 +68,18 @@ enum DebugSnapshot {
         case "actual": controller.resetFontSize(nil)
         case "select": select(controller)
         case "selectall": controller.debugPanes[0].selectAll(nil)
+        case "drag", "word", "worddrag", "line", "shift", "gutter": mouse(action, controller)
         default: controller.goToNextChange(nil)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
             print("step \(n) \(action) subtitle:", window.subtitle)
             if dumpsAccessibility {
                 print("announcement:", controller.lastAnnouncement ?? "none")
+            }
+            if action == "select" || action == "selectall" || mouseActions.contains(action) {
+                for (pane, side) in zip(controller.debugPanes, ["left", "right"]) {
+                    print("  \(side) copies:", pane.accessibilitySelectedText().map { String(reflecting: String($0.prefix(200))) } ?? "nothing")
+                }
             }
             capture(window, "\(prefix)-\(n).png")
             step(n + 1, of: steps, controller, window, prefix)
@@ -90,6 +98,52 @@ enum DebugSnapshot {
                                            head: .init(row: rows.lowerBound + 2, offset: 9))
         panes[1].selection = TextSelection(rows: rows.lowerBound, to: rows.upperBound - 1, in: p.result,
                                            on: \.right, lines: right.lines)
+    }
+
+    private static let mouseActions: Set = ["drag", "word", "worddrag", "line", "shift", "gutter"]
+
+    /// Clicks and drags in the change navigated to (or the first), through the panes'
+    /// own mouse handling, to check what hit testing selects. On the left: `drag` from
+    /// column 3 of the first row to column 9 two rows on (what `select` selects),
+    /// `word` double-clicks column 14, `worddrag` drags from there onto the next row,
+    /// `line` triple-clicks the first row, and `shift` shift-clicks column 5 of the next
+    /// row after any of those. `gutter` double-clicks the right pane's gutter.
+    private static func mouse(_ action: String, _ controller: CompareWindowController) {
+        let p = controller.presentation
+        guard let hunk = p.currentHunk ?? (p.result.hunks.isEmpty ? nil : 0) else { return }
+        let row = p.result.hunks[hunk].rows.lowerBound
+        let panes = controller.debugPanes
+        // A third of the way into the column, so rounding to the nearer edge picks its start.
+        func point(_ row: Int, _ column: Int) -> NSPoint {
+            NSPoint(x: p.textInset + (CGFloat(column) + 0.3) * p.charWidth, y: (CGFloat(row) + 0.5) * p.lineHeight)
+        }
+        func event(_ type: NSEvent.EventType, _ point: NSPoint, in view: NSView, clicks: Int = 1,
+                   shift: Bool = false) -> NSEvent {
+            NSEvent.mouseEvent(with: type, location: view.convert(point, to: nil), modifierFlags: shift ? .shift : [],
+                               timestamp: ProcessInfo.processInfo.systemUptime, windowNumber: view.window?.windowNumber ?? 0,
+                               context: nil, eventNumber: 0, clickCount: clicks, pressure: 1)!
+        }
+        let left = panes[0]
+        switch action {
+        case "drag":
+            left.mouseDown(with: event(.leftMouseDown, point(row, 3), in: left))
+            left.mouseDragged(with: event(.leftMouseDragged, point(row + 1, 6), in: left))
+            left.mouseDragged(with: event(.leftMouseDragged, point(row + 2, 9), in: left))
+        case "word", "worddrag":
+            left.mouseDown(with: event(.leftMouseDown, point(row, 14), in: left))
+            left.mouseDown(with: event(.leftMouseDown, point(row, 14), in: left, clicks: 2))
+            if action == "worddrag" { left.mouseDragged(with: event(.leftMouseDragged, point(row + 1, 2), in: left)) }
+        case "line":
+            for clicks in 1...3 { left.mouseDown(with: event(.leftMouseDown, point(row, 4), in: left, clicks: clicks)) }
+        case "shift":
+            left.mouseDown(with: event(.leftMouseDown, point(row + 1, 5), in: left, shift: true))
+        default:
+            // The gutter isn't in the pane's scroll view, but it sends the pane's own
+            // coordinates, and only the row matters.
+            let right = panes[1]
+            right.gutterMouseDown(with: event(.leftMouseDown, point(row, -3), in: right))
+            right.gutterMouseDown(with: event(.leftMouseDown, point(row, -3), in: right, clicks: 2))
+        }
     }
 
     /// Labels of the panes' visible rows and the change map, as VoiceOver gets them.
