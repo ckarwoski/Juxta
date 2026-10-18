@@ -82,6 +82,50 @@ final class TextSelectionTests: XCTestCase {
                        " ip address 10.1.1.1/24\n\n shutdown")
     }
 
+    func testWholeRowsSelectEveryRowThroughItsLineEnd() {
+        // Row 3 is an empty line on the left, and on the right row 4 is a filler.
+        let rows = TextSelection(rows: 1, to: 3, in: result, on: \.left, lines: left)
+        XCTAssertTrue(rows.wholeRows)
+        XCTAssertNil(rows.span(inRow: 0, lineLength: 15))
+        XCTAssertEqual(rows.span(inRow: 1, lineLength: 23), .init(offsets: 0..<23, throughLineEnd: true))
+        XCTAssertEqual(rows.span(inRow: 3, lineLength: 0), .init(offsets: 0..<0, throughLineEnd: true))
+        XCTAssertNil(rows.span(inRow: 4, lineLength: 9))
+        let last = TextSelection(rows: 4, to: 5, in: result, on: \.left, lines: left)
+        XCTAssertEqual(last.span(inRow: 5, lineLength: 1), .init(offsets: 0..<1, throughLineEnd: true))
+        XCTAssertEqual(leftText(last), " shutdown\n!")
+
+        // A single empty row is still a selection, and copies its (empty) line.
+        let empty = TextSelection(rows: 3, to: 3, in: result, on: \.left, lines: left)
+        XCTAssertFalse(empty.isEmpty)
+        XCTAssertEqual(empty.span(inRow: 3, lineLength: 0), .init(offsets: 0..<0, throughLineEnd: true))
+        XCTAssertEqual(leftText(empty), "")
+        XCTAssertFalse(TextSelection(rows: 2, to: 2, in: result, on: \.left, lines: left).isEmpty)
+        // Characters from and to the same place are empty, as before.
+        XCTAssertTrue(selection((3, 0), (3, 0)).isEmpty)
+        XCTAssertFalse(selection((3, 0), (3, 0)).wholeRows)
+    }
+
+    func testSavedWholeRowsStayWholeRows() throws {
+        let unaligned = Comparator.passthrough(leftCount: left.count, rightCount: right.count)
+        let empty = TextSelection(rows: 3, to: 3, in: result, on: \.left, lines: left)
+        let saved = try XCTUnwrap(empty.saved(in: result, on: \.left, lines: left))
+        XCTAssertEqual(saved, .init(anchor: .init(line: 2, offset: 0), head: .init(line: 2, offset: 0), wholeRows: true))
+        let restored = try XCTUnwrap(TextSelection(saved, in: unaligned, on: \.left))
+        XCTAssertEqual(restored, TextSelection(rows: 2, to: 2, in: unaligned, on: \.left, lines: left))
+        XCTAssertFalse(restored.isEmpty)
+
+        // Dragged up over a filler: the restored rows are the lines', anchored at the bottom.
+        let up = TextSelection(rows: 3, to: 1, in: result, on: \.left, lines: left)
+        let savedUp = try XCTUnwrap(up.saved(in: result, on: \.left, lines: left))
+        let restoredUp = try XCTUnwrap(TextSelection(savedUp, in: unaligned, on: \.left))
+        XCTAssertEqual(restoredUp, TextSelection(rows: 2, to: 1, in: unaligned, on: \.left, lines: left))
+        XCTAssertEqual(restoredUp.text(in: unaligned, on: \.left, lines: left), leftText(up))
+        XCTAssertEqual(TextSelection(savedUp, in: result, on: \.left), up)
+        // Only a filler on this side: nothing to keep.
+        XCTAssertNil(TextSelection(rows: 4, to: 4, in: result, on: \.right, lines: right)
+            .saved(in: result, on: \.right, lines: right))
+    }
+
     func testSpans() {
         let across = selection((3, 0), (1, 12))
         XCTAssertNil(across.span(inRow: 0, lineLength: 15))

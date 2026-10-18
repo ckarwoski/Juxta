@@ -4,7 +4,8 @@ import Foundation
 /// it is now). Positions are rows of the result and UTF-16 offsets in that row's line
 /// on the pane's side, matching the inline-change ranges. A whole-row selection is
 /// offset 0 of its first row to the end of its last row's line, so drawing and copying
-/// have just one case.
+/// have just one case, but it is marked `wholeRows` so that every row in it, empty or
+/// not, draws as selected to the pane's edge.
 ///
 /// As in a text view, the line break after a row is selected when the selection goes
 /// on past that row, and copied as "\n". A selection that ends at offset 0 of a row
@@ -29,6 +30,9 @@ public struct TextSelection: Equatable, Sendable {
 
     public var anchor: Position
     public var head: Position
+    /// Selected by rows (in the gutter, or a whole change), not characters: every row
+    /// from `start` to `end` is selected through its line end, even an empty one.
+    public private(set) var wholeRows = false
 
     public init(anchor: Position, head: Position) {
         self.anchor = anchor
@@ -47,11 +51,12 @@ public struct TextSelection: Equatable, Sendable {
             self.init(anchor: Position(row: anchorRow, offset: length(anchorRow)),
                       head: Position(row: headRow, offset: 0))
         }
+        wholeRows = true
     }
 
     public var start: Position { min(anchor, head) }
     public var end: Position { max(anchor, head) }
-    public var isEmpty: Bool { anchor == head }
+    public var isEmpty: Bool { !wholeRows && anchor == head }
 
     /// The selected part of one row, for drawing.
     public struct Span: Equatable, Sendable {
@@ -68,6 +73,7 @@ public struct TextSelection: Equatable, Sendable {
     public func span(inRow row: Int, lineLength: Int) -> Span? {
         let start = self.start, end = self.end
         guard start.row <= row, row <= end.row else { return nil }
+        if wholeRows { return Span(offsets: 0..<lineLength, throughLineEnd: true) }
         let lower = row == start.row ? min(start.offset, lineLength) : 0
         if row < end.row { return Span(offsets: lower..<max(lower, lineLength), throughLineEnd: true) }
         let upper = min(end.offset, lineLength)
@@ -84,8 +90,8 @@ public struct TextSelection: Equatable, Sendable {
         return rows.compactMap { row -> Substring? in
             guard let line = Self.line(row, in: result, on: side, lines: lines) else { return nil }
             let utf16 = line.utf16
-            let lower = row == start.row ? min(start.offset, utf16.count) : 0
-            let upper = row == end.row ? min(end.offset, utf16.count) : utf16.count
+            let lower = row == start.row && !wholeRows ? min(start.offset, utf16.count) : 0
+            let upper = row == end.row && !wholeRows ? min(end.offset, utf16.count) : utf16.count
             guard lower < upper else { return "" }
             return line[utf16.index(utf16.startIndex, offsetBy: lower)..<utf16.index(utf16.startIndex, offsetBy: upper)]
         }.joined(separator: "\n")
@@ -117,6 +123,7 @@ public struct TextSelection: Equatable, Sendable {
     public struct Saved: Equatable, Sendable {
         public var anchor: LinePosition
         public var head: LinePosition
+        public var wholeRows = false
     }
 
     /// The selection as `side`'s lines, or nil when it selects nothing there. An end on
@@ -132,8 +139,9 @@ public struct TextSelection: Equatable, Sendable {
         }
         let first = position(start, line: shown.lowerBound, fillerOffset: 0)
         let last = position(end, line: shown.upperBound, fillerOffset: lines[shown.upperBound].utf16.count)
-        guard (first.line, first.offset) < (last.line, last.offset) else { return nil }
-        return anchor <= head ? Saved(anchor: first, head: last) : Saved(anchor: last, head: first)
+        guard wholeRows || (first.line, first.offset) < (last.line, last.offset) else { return nil }
+        return anchor <= head ? Saved(anchor: first, head: last, wholeRows: wholeRows)
+                              : Saved(anchor: last, head: first, wholeRows: wholeRows)
     }
 
     /// The same lines and offsets in a new result for the same documents, or nil when
@@ -146,5 +154,6 @@ public struct TextSelection: Equatable, Sendable {
         let start = Position(row: rows.lowerBound, offset: first.offset)
         let end = Position(row: rows.upperBound - 1, offset: last.offset)
         self.init(anchor: forward ? start : end, head: forward ? end : start)
+        wholeRows = saved.wholeRows
     }
 }
