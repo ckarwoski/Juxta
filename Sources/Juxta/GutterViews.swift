@@ -86,8 +86,9 @@ final class LineNumberView: NSView {
         NSRect(x: bounds.width - 1, y: dirtyRect.minY, width: 1, height: dirtyRect.height).fill()
     }
 
-    override func mouseDown(with event: NSEvent) { pane?.mouseDown(with: event) }
-    override func mouseDragged(with event: NSEvent) { pane?.mouseDragged(with: event) }
+    // Clicks here select whole rows; the pane tells them from clicks in its text.
+    override func mouseDown(with event: NSEvent) { pane?.gutterMouseDown(with: event) }
+    override func mouseDragged(with event: NSEvent) { pane?.gutterMouseDragged(with: event) }
     override func scrollWheel(with event: NSEvent) { scrollView?.scrollWheel(with: event) }
 }
 

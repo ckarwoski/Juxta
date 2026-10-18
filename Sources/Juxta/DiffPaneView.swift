@@ -408,10 +408,41 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
 
     // MARK: Selection
 
-    private func row(at event: NSEvent) -> Int {
-        let point = convert(event.locationInWindow, from: nil)
+    /// The mouse gesture that made the selection, so that dragging or shift-clicking
+    /// goes on from it by the same unit.
+    private struct Gesture {
+        /// What the click that began it selected: extending keeps all of it.
+        var origin: Range<TextSelection.Position>
+        /// `.row` in the line-number gutter; in the text, what the click selected.
+        var unit: TextSelection.Unit
+        /// The selection it made last.
+        var made: TextSelection?
+    }
+
+    private var gesture: Gesture?
+
+    /// The gesture, while the selection is the one it made: once Select All, Escape or
+    /// a recompute has changed the selection, the gesture is over.
+    private var currentGesture: Gesture? {
+        guard let gesture, selection != nil, gesture.made == selection else { return nil }
+        return gesture
+    }
+
+    /// The line shown in `row`, or nil on a filler row.
+    private func line(row: Int) -> String? {
+        guard let document = presentation.document(side), presentation.result.rows.indices.contains(row) else { return nil }
+        let index = presentation.lineIndex(row: row, side: side)
+        return index >= 0 ? document.lines[index] : nil
+    }
+
+    /// The row at `point`, clamped to the rows.
+    private func row(at point: NSPoint) -> Int {
         let count = presentation.result.rows.count
-        return min(max(Int(point.y / presentation.lineHeight), 0), max(count - 1, 0))
+        return min(max(Int(floor(point.y / presentation.lineHeight)), 0), max(count - 1, 0))
+    }
+
+    private func isBelowLastRow(_ point: NSPoint) -> Bool {
+        point.y >= CGFloat(presentation.result.rows.count) * presentation.lineHeight
     }
 
     /// The row and line offset at `point`, laid out as the row is drawn. Above the first
@@ -420,16 +451,12 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
     private func position(at point: NSPoint, rounding: HitTest.Rounding) -> TextSelection.Position {
         let p = presentation
         let rows = p.result.rows
-        guard let document = p.document(side), !rows.isEmpty, point.y >= 0 else { return .init(row: 0, offset: 0) }
-        let line = { (row: Int) -> String? in
-            let index = p.lineIndex(row: row, side: self.side)
-            return index >= 0 ? document.lines[index] : nil
-        }
+        guard p.document(side) != nil, !rows.isEmpty, point.y >= 0 else { return .init(row: 0, offset: 0) }
         let row = Int(point.y / p.lineHeight)
         guard row < rows.count else {
-            return .init(row: rows.count - 1, offset: line(rows.count - 1)?.utf16.count ?? 0)
+            return .init(row: rows.count - 1, offset: line(row: rows.count - 1)?.utf16.count ?? 0)
         }
-        guard let text = line(row), !text.isEmpty else { return .init(row: row, offset: 0) }
+        guard let text = line(row: row), !text.isEmpty else { return .init(row: row, offset: 0) }
         // A long line is sliced around the point, as it is drawn around the dirty rect.
         let layout = rowLayout(text, row: rows[row], in: NSRect(x: point.x, y: CGFloat(row) * p.lineHeight,
                                                                 width: 0, height: p.lineHeight))
@@ -442,34 +469,59 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
         selection = TextSelection(rows: anchor, to: row, in: presentation.result, on: sideKey, lines: document.lines)
     }
 
-    override func mouseDown(with event: NSEvent) {
+    // MARK: Mouse in the gutter
+
+    private func rowRange(_ row: Int) -> Range<TextSelection.Position> {
+        TextSelection.range(of: .row, at: .init(row: row, offset: 0), line: line(row: row))
+    }
+
+    /// Whole rows from `origin` to `target`, keeping all of `origin`, as a gutter gesture.
+    private func selectRows(from origin: Range<TextSelection.Position>, to target: Range<TextSelection.Position>) {
+        let ends = TextSelection(from: origin, to: target)
+        selectRows(from: ends.anchor.row, to: ends.head.row)
+        gesture = Gesture(origin: origin, unit: .row, made: selection)
+    }
+
+    /// A click in the line-number gutter selects its row, a double-click the change,
+    /// and a shift-click extends by rows.
+    func gutterMouseDown(with event: NSEvent) {
         window?.makeFirstResponder(self)
         guard presentation.document(side) != nil, !presentation.result.rows.isEmpty else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        let shift = event.modifierFlags.contains(.shift)
         // A click in the empty space below the last row selects nothing; a drag or
         // shift-click there still reaches the last row through `row(at:)`.
-        let point = convert(event.locationInWindow, from: nil)
-        if !event.modifierFlags.contains(.shift),
-           point.y >= CGFloat(presentation.result.rows.count) * presentation.lineHeight {
+        if !shift, isBelowLastRow(point) {
             clearSelection()
             return
         }
-        let clicked = row(at: event)
-        if event.clickCount == 2, let hunk = presentation.result.hunk(containing: clicked) {
+        let target = rowRange(row(at: point))
+        if shift, let selection {
+            selectRows(from: currentGesture?.origin ?? selection.anchor..<selection.anchor, to: target)
+        } else if event.clickCount == 2, let hunk = presentation.result.hunk(containing: target.lowerBound.row) {
             let rows = presentation.result.hunks[hunk].rows
-            selectRows(from: rows.lowerBound, to: rows.upperBound - 1)
-            return
-        }
-        if event.modifierFlags.contains(.shift), let anchor = selection?.anchor.row {
-            selectRows(from: anchor, to: clicked)
+            let change = rowRange(rows.lowerBound).lowerBound..<rowRange(rows.upperBound - 1).upperBound
+            selectRows(from: change, to: change)
         } else {
-            selectRows(from: clicked, to: clicked)
+            selectRows(from: target, to: target)
         }
     }
 
-    override func mouseDragged(with event: NSEvent) {
-        guard let anchor = selection?.anchor.row else { return }
+    /// Dragging in the gutter extends by rows, from the row or change first clicked.
+    func gutterMouseDragged(with event: NSEvent) {
+        guard let gesture = currentGesture, gesture.unit == .row else { return }
         autoscroll(with: event)
-        selectRows(from: anchor, to: row(at: event))
+        selectRows(from: gesture.origin, to: rowRange(row(at: convert(event.locationInWindow, from: nil))))
+    }
+
+    // MARK: Mouse in the text
+
+    override func mouseDown(with event: NSEvent) {
+        gutterMouseDown(with: event)
+    }
+
+    override func mouseDragged(with event: NSEvent) {
+        gutterMouseDragged(with: event)
     }
 
     @objc func copy(_ sender: Any?) {
