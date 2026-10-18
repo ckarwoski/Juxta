@@ -516,12 +516,55 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
 
     // MARK: Mouse in the text
 
+    // As in a text view: a click selects nothing (there's no caret, but a shift-click
+    // goes on from it), a double-click a word and a triple-click the line; dragging
+    // after each extends by that unit.
+
+    /// The positions `unit` covers at `point`. A word is the one under the point; for
+    /// the others, the nearer edge between characters counts.
+    private func range(of unit: TextSelection.Unit, at point: NSPoint) -> Range<TextSelection.Position> {
+        let position = position(at: point, rounding: unit == .word ? .characterUnder : .nearestEdge)
+        return TextSelection.range(of: unit, at: position, line: line(row: position.row))
+    }
+
+    /// Characters from `origin` to `target`, keeping all of `origin`, as a gesture by `unit`.
+    private func select(from origin: Range<TextSelection.Position>, to target: Range<TextSelection.Position>,
+                        by unit: TextSelection.Unit) {
+        selection = TextSelection(from: origin, to: target)
+        gesture = Gesture(origin: origin, unit: unit, made: selection)
+    }
+
     override func mouseDown(with event: NSEvent) {
-        gutterMouseDown(with: event)
+        window?.makeFirstResponder(self)
+        guard presentation.document(side) != nil, !presentation.result.rows.isEmpty else { return }
+        let point = convert(event.locationInWindow, from: nil)
+        let shift = event.modifierFlags.contains(.shift)
+        // A click in the empty space below the last row selects nothing; a drag or
+        // shift-click there reaches the end of the last line through `position(at:)`.
+        if !shift, isBelowLastRow(point) {
+            clearSelection()
+            return
+        }
+        if shift, let selection {
+            // By characters, from what the gesture that made the selection first took.
+            // Whole rows (from the gutter or a change) become characters, from the start
+            // of their first row or, going back past it, from the end of their last.
+            let origin = selection.wholeRows ? selection.start..<selection.end
+                : currentGesture?.origin ?? selection.anchor..<selection.anchor
+            select(from: origin, to: range(of: .character, at: point), by: .character)
+            return
+        }
+        let unit: TextSelection.Unit = shift ? .character
+            : event.clickCount == 2 ? .word : event.clickCount >= 3 ? .line : .character
+        let origin = range(of: unit, at: point)
+        select(from: origin, to: origin, by: unit)
     }
 
     override func mouseDragged(with event: NSEvent) {
-        gutterMouseDragged(with: event)
+        guard let gesture = currentGesture, gesture.unit != .row else { return }
+        autoscroll(with: event)
+        let point = convert(event.locationInWindow, from: nil)
+        select(from: gesture.origin, to: range(of: gesture.unit, at: point), by: gesture.unit)
     }
 
     @objc func copy(_ sender: Any?) {
