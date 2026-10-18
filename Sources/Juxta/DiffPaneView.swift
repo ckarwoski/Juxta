@@ -128,7 +128,10 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
                 Theme.drawFiller(in: rowRect)
                 continue
             }
-            let selected = selectedSpan(row: r) != nil
+            // A fully selected line fills its row, covering the change highlights, so a
+            // block of rows reads as a block; part of a line fills just its columns.
+            let span = selectedSpan(row: r)
+            let selected = span.map { $0.offsets.lowerBound == 0 && $0.throughLineEnd } ?? false
             if selected {
                 selectionColor.setFill()
                 rowRect.fill()
@@ -196,6 +199,19 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
                     Theme.drawChangedHighlight(in: NSRect(x: originX + x0, y: y + 1,
                                                           width: max(x1 - x0, 2), height: lh - 2))
                 }
+            }
+            if let span, !selected {
+                // Line offsets to x, through the slice and the invisibles as above.
+                func x(_ lineOffset: Int) -> CGFloat {
+                    var index = lineOffset
+                    if let columns { index = min(max(index, columns.lowerBound), columns.upperBound) - start }
+                    if let invisibles { index = invisibles.displayOffset(index) }
+                    return originX + offset(index)
+                }
+                let x0 = x(span.offsets.lowerBound)
+                let x1 = span.throughLineEnd ? rowRect.maxX : x(span.offsets.upperBound)
+                selectionColor.setFill()
+                NSRect(x: x0, y: y, width: max(x1 - x0, 0), height: lh).fill()
             }
             ctx.setFillColor(textColor)
             ctx.textPosition = CGPoint(x: originX, y: y + p.baseline)
