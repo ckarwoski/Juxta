@@ -10,8 +10,7 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
     /// Called when selection changes so the line-number gutter can repaint.
     var onSelectionChange: (() -> Void)?
 
-    private var selectionAnchor: Int?
-    private(set) var selection: Range<Int>? {
+    private(set) var selection: TextSelection? {
         didSet {
             needsDisplay = true
             onSelectionChange?()
@@ -53,31 +52,30 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
     }
 
     func clearSelection() {
-        selectionAnchor = nil
         selection = nil
     }
 
-    /// The selection as this side's lines, and whether the anchor is at its end: rows
-    /// change with the result, lines don't.
-    struct LineSelection {
-        var lines: ClosedRange<Int>
-        var anchorAtEnd: Bool
-    }
+    private var sideKey: KeyPath<DiffRow, Int32> { side == .left ? \.left : \.right }
 
-    func lineSelection() -> LineSelection? {
-        guard let selection,
-              let lines = presentation.result.lines(in: selection, on: side == .left ? \.left : \.right)
+    /// The selected part of `row`'s line, or nil when none of it is selected. A filler
+    /// row inside the selection counts as selected, with an empty line.
+    func selectedSpan(row: Int) -> TextSelection.Span? {
+        guard let selection, selection.start.row <= row, row <= selection.end.row,
+              let document = presentation.document(side), presentation.result.rows.indices.contains(row)
         else { return nil }
-        return LineSelection(lines: lines, anchorAtEnd: selection.count > 1 && selectionAnchor == selection.upperBound - 1)
+        let index = presentation.lineIndex(row: row, side: side)
+        return selection.span(inRow: row, lineLength: index >= 0 ? document.lines[index].utf16.count : 0)
     }
 
-    /// Selects the same lines in a new result for the same documents.
-    func restore(_ saved: LineSelection?) {
-        guard let saved,
-              let rows = presentation.result.rows(showing: saved.lines, on: side == .left ? \.left : \.right)
-        else { return clearSelection() }
-        selectionAnchor = saved.anchorAtEnd ? rows.upperBound - 1 : rows.lowerBound
-        selection = rows
+    /// The selection as this side's lines: rows change with the result, lines don't.
+    func savedSelection() -> TextSelection.Saved? {
+        guard let selection, let document = presentation.document(side) else { return nil }
+        return selection.saved(in: presentation.result, on: sideKey, lines: document.lines)
+    }
+
+    /// Selects the same lines and columns in a new result for the same documents.
+    func restore(_ saved: TextSelection.Saved?) {
+        selection = saved.flatMap { TextSelection($0, in: presentation.result, on: sideKey) }
     }
 
     /// Resizes to fit the content, but never smaller than the visible area.
@@ -130,7 +128,7 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
                 Theme.drawFiller(in: rowRect)
                 continue
             }
-            let selected = selection?.contains(r) == true
+            let selected = selectedSpan(row: r) != nil
             if selected {
                 selectionColor.setFill()
                 rowRect.fill()
@@ -346,8 +344,10 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
         return min(max(Int(point.y / presentation.lineHeight), 0), max(count - 1, 0))
     }
 
-    private func select(from anchor: Int, to row: Int) {
-        selection = min(anchor, row)..<(max(anchor, row) + 1)
+    /// Selects whole rows, as clicking and dragging in the line-number gutter does.
+    private func selectRows(from anchor: Int, to row: Int) {
+        guard let document = presentation.document(side) else { return }
+        selection = TextSelection(rows: anchor, to: row, in: presentation.result, on: sideKey, lines: document.lines)
     }
 
     override func mouseDown(with event: NSEvent) {
@@ -364,43 +364,37 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
         let clicked = row(at: event)
         if event.clickCount == 2, let hunk = presentation.result.hunk(containing: clicked) {
             let rows = presentation.result.hunks[hunk].rows
-            selectionAnchor = rows.lowerBound
-            selection = rows
+            selectRows(from: rows.lowerBound, to: rows.upperBound - 1)
             return
         }
-        if event.modifierFlags.contains(.shift), let anchor = selectionAnchor {
-            select(from: anchor, to: clicked)
+        if event.modifierFlags.contains(.shift), let anchor = selection?.anchor.row {
+            selectRows(from: anchor, to: clicked)
         } else {
-            selectionAnchor = clicked
-            select(from: clicked, to: clicked)
+            selectRows(from: clicked, to: clicked)
         }
     }
 
     override func mouseDragged(with event: NSEvent) {
-        guard let anchor = selectionAnchor else { return }
+        guard let anchor = selection?.anchor.row else { return }
         autoscroll(with: event)
-        select(from: anchor, to: row(at: event))
+        selectRows(from: anchor, to: row(at: event))
     }
 
     @objc func copy(_ sender: Any?) {
-        guard let selection, let document = presentation.document(side) else { return }
-        let lines = selection.clamped(to: presentation.result.rows.indices).compactMap { row -> String? in
-            let index = presentation.lineIndex(row: row, side: side)
-            return index >= 0 ? document.lines[index] : nil
-        }
+        guard let selection, !selection.isEmpty, let document = presentation.document(side) else { return }
         NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(lines.joined(separator: "\n"), forType: .string)
+        NSPasteboard.general.setString(selection.text(in: presentation.result, on: sideKey, lines: document.lines),
+                                       forType: .string)
     }
 
     override func selectAll(_ sender: Any?) {
         guard presentation.document(side) != nil, !presentation.result.rows.isEmpty else { return }
-        selectionAnchor = 0
-        selection = 0..<presentation.result.rows.count
+        selectRows(from: 0, to: presentation.result.rows.count - 1)
     }
 
     func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
         switch menuItem.action {
-        case #selector(copy(_:)): return selection != nil
+        case #selector(copy(_:)): return selection?.isEmpty == false
         case #selector(selectAll(_:)): return presentation.document(side) != nil
         default: return true
         }
@@ -495,8 +489,7 @@ final class DiffPaneView: NSView, NSMenuItemValidation {
     override func accessibilityVisibleChildren() -> [Any]? { accessibilityChildren() }
 
     override func accessibilitySelectedChildren() -> [Any]? {
-        guard let selection else { return [] }
-        return selection.clamped(to: visibleRowRange).map(element(row:))
+        visibleRowRange.filter { selectedSpan(row: $0) != nil }.map(element(row:))
     }
 
     override func accessibilityHitTest(_ point: NSPoint) -> Any? {
@@ -567,5 +560,5 @@ private final class RowElement: NSAccessibilityElement {
     override func accessibilityLabel() -> String? { pane?.accessibilityDescription(row: row) }
     override func accessibilityFrame() -> NSRect { pane?.screenFrame(row: row) ?? .zero }
     override func accessibilityParent() -> Any? { pane }
-    override func isAccessibilitySelected() -> Bool { pane?.selection?.contains(row) == true }
+    override func isAccessibilitySelected() -> Bool { pane?.selectedSpan(row: row) != nil }
 }

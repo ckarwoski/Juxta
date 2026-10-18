@@ -432,10 +432,10 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// The documents are the same, so each pane keeps the same lines selected.
     private func apply(_ result: DiffResult, restoring anchor: (side: Side, line: Int)?) {
         let panes = [leftPane.diffView, rightPane.diffView]
-        let selected = panes.map { $0.lineSelection() }
+        let selected = panes.map { $0.savedSelection() }
         presentation.setResult(result)
         pendingReveal = nil
-        for (pane, lines) in zip(panes, selected) { pane.restore(lines) }
+        for (pane, saved) in zip(panes, selected) { pane.restore(saved) }
         showResult(restoring: anchor)
     }
 

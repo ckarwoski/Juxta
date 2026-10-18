@@ -44,7 +44,6 @@ final class LineNumberView: NSView {
         let rows = p.result.rows
         let first = max(0, Int(floor((dirtyRect.minY + offset) / lh)))
         let last = min(rows.count, Int(ceil((dirtyRect.maxY + offset) / lh)))
-        let selection = pane?.selection
         let selectionColor = pane?.hasFocus == true
             ? NSColor.selectedTextBackgroundColor : NSColor.unemphasizedSelectedTextBackgroundColor
         let attributes: [NSAttributedString.Key: Any] = [.font: p.gutterFont, .foregroundColor: Theme.lineNumber]
@@ -62,7 +61,7 @@ final class LineNumberView: NSView {
                     Theme.drawFiller(in: rowRect)
                     continue
                 }
-                let selected = selection?.contains(r) == true
+                let selected = pane?.selectedSpan(row: r) != nil
                 if selected {
                     selectionColor.setFill()
                     rowRect.fill()
