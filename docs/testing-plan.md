@@ -248,6 +248,18 @@ Manual before release (needs a person or the installed app):
       are spoken on ⌥⌘↓/⌥⌘↑, the change map slider steps between changes.
 - [ ] ⌘R after editing a file in another app; paste (⌘V, ⌥⌘V, ⇧⌥⌘V) from real `show` output.
 - [ ] A glance in Dark Mode and with Increase Contrast on.
+- [ ] Saved comparisons (`docs/saved-comparisons.md`), with the installed app
+      (`./scripts/build.sh --install`, so Launch Services sees the `.juxta` type):
+  - [ ] The save panel: the Left name, Right name and Note fields, the suggested file name
+        following them until edited, and the `.juxta` extension being added.
+  - [ ] Change or delete a file between loading and saving: the alert names it, Reload reloads
+        and Cancel cancels.
+  - [ ] File › Open Recent lists saved and opened `.juxta` files, opens them, and Clear Menu
+        empties it.
+  - [ ] Double-click a `.juxta` file in Finder, drop one on the Dock icon, and drop one on a
+        pane: each opens in its own window.
+  - [ ] Toggle an option in a saved window: the menu and toolbar checkmarks follow, and a new
+        window's options are unchanged.
 
 ## Open questions
 
