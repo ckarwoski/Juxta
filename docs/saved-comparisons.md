@@ -56,6 +56,8 @@ for sharing with people who don't have Juxta.
   unchanged lines" separators) or **all lines**.
 - The page follows light and dark mode (`prefers-color-scheme`), and printing it works.
 - It works from any comparison window, saved or not.
+- The page shows names, not paths, so it doesn't reveal your folders. An **Include file paths**
+  checkbox (off by default, remembered) adds them, with the home folder shown as `~`.
 
 ### Quick Look
 

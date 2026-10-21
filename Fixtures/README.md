@@ -8,6 +8,8 @@ script, not the files. See `docs/testing-plan.md` for how they fit into testing.
   tests, then what to look for).
 - `generated/`: large timing pairs, not committed. `scripts/make-fixtures.py` recreates them
   (add `--huge` for the 1M-line pair).
+- `html/`: expected HTML export pages for `HTMLReportTests`, not written by the script.
+  `JUXTA_UPDATE_GOLDENS=1 swift test --filter HTMLReportTests` rewrites them.
 - `private/`: your own real configs, never committed. Same layout: `private/<name>/left.cfg`
   and `right.cfg`, plus an optional `about.txt`.
 

@@ -67,6 +67,7 @@ enum MainMenu {
         menu.addItem(item("Reload", #selector(CompareWindowController.reloadDocuments(_:)), "r"))
         menu.addItem(.separator())
         menu.addItem(item("Save Comparison…", #selector(CompareWindowController.saveComparison(_:)), "s"))
+        menu.addItem(item("Export as HTML…", #selector(CompareWindowController.exportHTML(_:)), "e", [.command, .shift]))
         menu.addItem(.separator())
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w"))
         return menu

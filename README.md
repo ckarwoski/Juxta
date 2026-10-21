@@ -61,6 +61,10 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
   change the options other windows use. A side edited after it was
   saved still opens, with a notice. The file is a text header followed by both sides, so it
   can be read in a text editor.
+  File › Export as HTML… (⇧⌘E) writes one self-contained page to share with people who don't
+  have Juxta: the changes with a few lines of context, or all lines, in the same colors, in
+  light or dark mode, and ready to print. From Terminal:
+  `juxta-diff --html [--context N | --all] before.cfg after.cfg > changes.html`.
 - ⌘R reloads both files from disk, ⌥⌘S swaps sides. ⌘+ / ⌘− make the text bigger or smaller in
   every window; ⌘0 (Actual Size) goes back to the size set in Settings.
 - **Select and copy:** in the text, drag to select characters, double-click for a word (an

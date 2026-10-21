@@ -106,6 +106,8 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// Sides still showing what a `.juxta` file opened here. While there are any, the
     /// window keeps the options saved in that file instead of remembering its toggles.
     private var openedSides: Set<Side> = []
+    /// Where each side shown from a `.juxta` file was loaded from, for exported pages.
+    private var savedPaths: [Side: String] = [:]
     private var remembersOptions: Bool { openedSides.isEmpty }
     /// A save is writing; another waits until it's done.
     private var isSaving = false
@@ -381,6 +383,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     private func sideReplaced(_ side: Side) {
         editedSides.remove(side)
         openedSides.remove(side)
+        savedPaths[side] = nil
         saved = nil
         savedURL = nil
     }
@@ -429,6 +432,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
                     self.editedSides = Set([(Side.left, saved.left), (.right, saved.right)]
                         .filter { !$0.1.matchesDigest }.map(\.0))
                     self.openedSides = [.left, .right]
+                    self.savedPaths = Self.paths(saved)
                     self.options = saved.options
                     self.presentation.setDocument(left, for: .left)
                     self.presentation.setDocument(right, for: .right)
@@ -500,10 +504,71 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         }
     }
 
+    private static func paths(_ saved: SavedComparison) -> [Side: String] {
+        var paths: [Side: String] = [:]
+        for (side, saved) in [(Side.left, saved.left), (.right, saved.right)] {
+            if case .file(let path) = saved.source, !path.isEmpty { paths[side] = path }
+        }
+        return paths
+    }
+
+    // MARK: Exporting
+
+    @objc func exportHTML(_ sender: Any?) {
+        guard let window, let left = presentation.left, let right = presentation.right else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [.html]
+        panel.isExtensionHidden = false
+        panel.nameFieldStringValue = SaveFields.fileName(note: saved?.note ?? "", left: left.name, right: right.name,
+                                                         extension: "html")
+        let fields = ExportFields()
+        panel.accessoryView = fields.view
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            fields.remember()
+            self.exportHTML(to: url, extent: fields.extent, includesPaths: fields.includesPaths) { error in
+                guard let error, let window = self.window else { return }
+                let alert = NSAlert()
+                alert.messageText = "The page couldn't be exported"
+                alert.informativeText = error.localizedDescription
+                alert.beginSheetModal(for: window)
+            }
+        }
+    }
+
+    /// Writes the comparison as shown, with this window's options, as an HTML page. Both
+    /// the export panel and the debug `exportHTML` step export here.
+    func exportHTML(to url: URL, extent: HTMLReport.Extent, includesPaths: Bool,
+                    completion: @escaping (Error?) -> Void) {
+        guard let left = presentation.left, let right = presentation.right else {
+            return completion(SaveError.emptySide)
+        }
+        var report = HTMLReport(left: left, right: right, result: presentation.result, options: options)
+        // Paths are left out unless asked for, since the page is meant to be shared.
+        if includesPaths {
+            report.leftPath = (left.url?.path ?? savedPaths[.left]).map(HTMLReport.displayPath)
+            report.rightPath = (right.url?.path ?? savedPaths[.right]).map(HTMLReport.displayPath)
+        }
+        report.extent = extent
+        if let saved {
+            report.note = saved.note
+            report.date = saved.saved
+            report.dateLabel = "Saved"
+        }
+        report.notices = [editedNotice].compactMap { $0 }
+        DispatchQueue.global(qos: .userInitiated).async {
+            let result = Result { try Data(report.render().utf8).write(to: url, options: .atomic) }
+            DispatchQueue.main.async {
+                if case .failure(let error) = result { completion(error) } else { completion(nil) }
+            }
+        }
+    }
+
     private func didSave(_ saved: SavedComparison, to url: URL) {
         self.saved = saved
         savedURL = url
         snapshotSides = [saved.left, saved.right]
+        savedPaths = Self.paths(saved)
         editedSides = Set([(Side.left, saved.left), (.right, saved.right)].filter { !$0.1.matchesDigest }.map(\.0))
         presentation.rename(.left, to: saved.left.name)
         presentation.rename(.right, to: saved.right.name)
@@ -703,62 +768,22 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             window.subtitle = "Add something to compare on the \(presentation.left == nil ? "left" : "right")"
             return
         }
+        guard let left = presentation.left, let right = presentation.right else { return }
         let result = presentation.result
-        var parts: [String] = []
-        // Lines are compared without encoding and line endings, so those differences
-        // are reported here; the files must never look identical when they aren't.
-        var hidden: [TextFormat.Aspect] = []
-        var bytesSame: Bool?
-        if let left = presentation.left, let right = presentation.right {
-            hidden = left.hiddenDifferences(from: right)
-            bytesSame = left.isByteIdentical(to: right)
-        }
-        let ignoringAny = options.ignoresAny
-        if result.isIdentical {
-            if !hidden.isEmpty {
-                parts.append("Same text")
-            } else if bytesSame == false && !ignoringAny {
-                parts.append("Same text, but the files aren't byte-for-byte identical")
-            } else if bytesSame == true {
-                // Only when the bytes match; for pasted text, or same text with ignore
-                // options on, "no differences" is all that was checked.
-                parts.append(result.rows.isEmpty ? "Both files are empty" : "Files are identical")
-            } else {
-                parts.append("No differences")
-            }
-        } else {
-            let count = result.hunks.count
-            if let current = presentation.currentHunk {
-                parts.append("Change \(current + 1) of \(count)")
-            } else {
-                parts.append(count == 1 ? "1 change" : "\(count.formatted()) changes")
-            }
-            if result.changedLines > 0 { parts.append("\(result.changedLines.formatted()) modified") }
-            if result.deletedLines > 0 { parts.append("\(result.deletedLines.formatted()) removed") }
-            if result.insertedLines > 0 { parts.append("\(result.insertedLines.formatted()) added") }
-        }
-        var ignoring: [String] = []
-        if options.ignoreWhitespace { ignoring.append("whitespace") }
-        if options.ignoreCase { ignoring.append("case") }
-        if options.ignoreTimers { ignoring.append("timers") }
-        if !hidden.isEmpty { parts.append("differs in " + Self.listed(hidden.map(\.rawValue))) }
+        let hidden = left.hiddenDifferences(from: right)
+        let bytesSame = left.isByteIdentical(to: right)
         // A saved comparison names the options it was saved with up front.
-        if !ignoring.isEmpty && options != saved?.options { parts.append("ignoring " + Self.listed(ignoring)) }
-        if result.isApproximate { parts.append("approximate (comparison timed out)") }
-
+        let parts = ComparisonSummary.parts(result, left: left, right: right, options: options, locale: .current,
+                                            currentHunk: presentation.currentHunk,
+                                            listsIgnored: options != saved?.options)
         var savedParts: [String] = []
         if let saved {
             savedParts.append("Saved " + saved.saved.formatted(date: .abbreviated, time: .omitted))
             if !saved.note.isEmpty { savedParts.append(saved.note) }
-            let titles = [(saved.options.ignoreWhitespace, "Ignore Whitespace"), (saved.options.ignoreCase, "Ignore Case"),
-                          (saved.options.ignoreTimers, "Ignore Timers")].filter(\.0).map(\.1)
-            if !titles.isEmpty { savedParts.append(Self.listed(titles)) }
+            let titles = ComparisonSummary.optionTitles(saved.options)
+            if !titles.isEmpty { savedParts.append(ComparisonSummary.listed(titles)) }
         }
-        let edited: String? = switch editedSides.count {
-        case 0: nil
-        case 1: "The \(editedSides.first == .left ? "left" : "right") side was edited after it was saved"
-        default: "Both sides were edited after they were saved"
-        }
+        let edited = editedNotice
         window.subtitle = (savedParts + [edited].compactMap { $0 } + parts).joined(separator: " · ")
         if result.isIdentical || edited != nil {
             let notice = ([edited].compactMap { $0 } + (result.isIdentical ? parts : [])).joined(separator: " · ")
@@ -768,10 +793,12 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         }
     }
 
-    /// "a", "a & b", "a, b & c".
-    private static func listed(_ items: [String]) -> String {
-        guard let last = items.last, items.count > 1 else { return items.first ?? "" }
-        return items.dropLast().joined(separator: ", ") + " & " + last
+    private var editedNotice: String? {
+        switch editedSides.count {
+        case 0: nil
+        case 1: "The \(editedSides.first == .left ? "left" : "right") side was edited after it was saved"
+        default: "Both sides were edited after they were saved"
+        }
     }
 
     /// The note floats over the bottom of the panes. Rows under it can be scrolled out
@@ -1085,6 +1112,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         pendingLoads.removeAll()
         editedSides = Set(editedSides.map { $0 == .left ? .right : .left })
         openedSides = Set(openedSides.map { $0 == .left ? .right : .left })
+        savedPaths = Dictionary(uniqueKeysWithValues: savedPaths.map { ($0 == .left ? .right : .left, $1) })
         presentation.swapDocuments()
         documentsChanged(restoring: topLine())
     }
@@ -1147,6 +1175,9 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             item.state = options.ignoreTimers ? .on : .off
         case #selector(saveComparison(_:)):
             return !hasEmptySide && !isLoading && !isComparing && !isSaving
+        case #selector(exportHTML(_:)):
+            // A cancelled comparison isn't aligned, so it would look like no changes.
+            return !hasEmptySide && !isLoading && !isComparing && !compareCancelled
         case #selector(goToNextChange(_:)), #selector(goToPreviousChange(_:)):
             return !presentation.result.hunks.isEmpty
         case #selector(reloadDocuments(_:)):
@@ -1194,7 +1225,7 @@ private enum SaveError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .emptySide: return "Both sides need something to compare before the comparison can be saved."
+        case .emptySide: return "Both sides need something to compare first."
         }
     }
 }
@@ -1243,8 +1274,17 @@ private final class SaveFields: NSObject, NSTextFieldDelegate {
     }
 
     private func suggestName() {
+        let name = Self.fileName(note: note, left: leftName, right: rightName, extension: "juxta")
+        if panel.nameFieldStringValue.isEmpty || panel.nameFieldStringValue == suggested {
+            panel.nameFieldStringValue = name
+        }
+        suggested = name
+    }
+
+    /// The note, else "<left> vs <right>", made fit for a file name.
+    static func fileName(note: String, left: String, right: String, extension ext: String) -> String {
         let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        let base = trimmed.isEmpty ? "\(leftName) vs \(rightName)" : trimmed
+        let base = trimmed.isEmpty ? "\(left) vs \(right)" : trimmed
         // "/" and ":" can't be in a file name.
         var name = base.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
         // A leading dot would hide the file.
@@ -1255,10 +1295,72 @@ private final class SaveFields: NSObject, NSTextFieldDelegate {
             name = String(cut.lastIndex(of: " ").map { cut[..<$0] }.flatMap { $0.count >= 40 ? $0 : nil } ?? cut)
                 .trimmingCharacters(in: .whitespaces)
         }
-        name = (name.isEmpty ? "Comparison" : name) + ".juxta"
-        if panel.nameFieldStringValue.isEmpty || panel.nameFieldStringValue == suggested {
-            panel.nameFieldStringValue = name
+        return (name.isEmpty ? "Comparison" : name) + "." + ext
+    }
+}
+
+/// The export panel's choice of how much to include, remembered for next time.
+private final class ExportFields: NSObject {
+    let view: NSView
+    private let changes = NSButton(radioButtonWithTitle: "Changes with", target: nil, action: nil)
+    private let all = NSButton(radioButtonWithTitle: "All lines", target: nil, action: nil)
+    private let context = NSTextField(string: "")
+    private let paths = NSButton(checkboxWithTitle: "Include file paths", target: nil, action: nil)
+
+    private static let allKey = "exportAllLines", contextKey = "exportContext", pathsKey = "exportIncludesPaths"
+
+    var includesPaths: Bool { paths.state == .on }
+
+    var extent: HTMLReport.Extent {
+        all.state == .on ? .all : .context(max(0, min(context.integerValue, 999)))
+    }
+
+    override init() {
+        let defaults = UserDefaults.standard
+        let lines = defaults.object(forKey: Self.contextKey) == nil ? 3 : defaults.integer(forKey: Self.contextKey)
+        context.integerValue = lines
+        let formatter = NumberFormatter()
+        formatter.minimum = 0
+        formatter.maximum = 999
+        formatter.allowsFloats = false
+        context.formatter = formatter
+        context.alignment = .right
+        context.widthAnchor.constraint(equalToConstant: 44).isActive = true
+        (defaults.bool(forKey: Self.allKey) ? all : changes).state = .on
+        paths.state = defaults.bool(forKey: Self.pathsKey) ? .on : .off
+        let row = NSStackView(views: [changes, context, NSTextField(labelWithString: "lines of context")])
+        row.spacing = 6
+        row.alignment = .firstBaseline
+        let column = NSStackView(views: [row, all, paths])
+        column.orientation = .vertical
+        column.alignment = .leading
+        column.spacing = 8
+        let container = NSView()
+        column.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(column)
+        NSLayoutConstraint.activate([
+            column.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            column.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -20),
+            column.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            column.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+        ])
+        view = container
+        super.init()
+        // Radio buttons with the same action in one superview act as a group.
+        for button in [changes, all] {
+            button.target = self
+            button.action = #selector(choose(_:))
         }
-        suggested = name
+    }
+
+    @objc private func choose(_ sender: NSButton) {
+        changes.state = sender === changes ? .on : .off
+        all.state = sender === all ? .on : .off
+    }
+
+    func remember() {
+        UserDefaults.standard.set(all.state == .on, forKey: Self.allKey)
+        UserDefaults.standard.set(context.integerValue, forKey: Self.contextKey)
+        UserDefaults.standard.set(includesPaths, forKey: Self.pathsKey)
     }
 }

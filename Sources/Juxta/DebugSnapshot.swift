@@ -12,6 +12,8 @@ import JuxtaCore
 /// comparison to $TMPDIR the way File › Save Comparison… does (JUXTA_NOTE sets the note) and
 /// replaces the window with one opened from that file; `reopenPaste` opens that file again
 /// and pastes on the left while it is still loading, then closes the old window;
+/// `exportHTML` exports the page to $TMPDIR as File › Export as HTML… does (JUXTA_EXPORT_ALL=1
+/// for all lines, else 3 lines of context; JUXTA_EXPORT_PATHS=1 includes file paths);
 /// `JUXTA_HC=1` uses the Increase Contrast appearance (with JUXTA_DARK, the dark one);
 /// `JUXTA_AX=1` prints what VoiceOver would see after each capture; `JUXTA_SETTINGS=1` also
 /// captures the Settings window.
@@ -74,6 +76,13 @@ enum DebugSnapshot {
         case "drag", "word", "worddrag", "line", "shift", "gutter": mouse(action, controller)
         case "saveReopen": saveReopen(controller)
         case "reopenPaste": reopenPaste(controller)
+        case "exportHTML":
+            let url = FileManager.default.temporaryDirectory.appendingPathComponent("Juxta export.html")
+            let all = ProcessInfo.processInfo.environment["JUXTA_EXPORT_ALL"] != nil
+            let paths = ProcessInfo.processInfo.environment["JUXTA_EXPORT_PATHS"] != nil
+            controller.exportHTML(to: url, extent: all ? .all : .context(3), includesPaths: paths) { error in
+                print(error.map { "exportHTML failed: \($0.localizedDescription)" } ?? "exportHTML wrote \(url.path)")
+            }
         default: controller.goToNextChange(nil)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {

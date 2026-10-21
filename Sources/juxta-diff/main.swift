@@ -4,10 +4,11 @@ import JuxtaCore
 // Command-line front end to JuxtaCore, for scripts (scripts/compare-git.py) and debugging.
 // Exit status follows diff: 0 identical, 1 different, 2 trouble.
 
-let usage = "usage: juxta-diff [--ignore-whitespace] [--ignore-case] [--ignore-timers] [--stats|--json|--rows] [--] <left> <right>\n"
+let usage = "usage: juxta-diff [--ignore-whitespace] [--ignore-case] [--ignore-timers]\n"
+    + "                  [--stats | --json | --rows | --html [--context N | --all] [--paths]] [--] <left> <right>\n"
     + "(either file can be - for standard input)"
 
-enum Mode { case stats, json, rows }
+enum Mode { case stats, json, rows, html }
 
 func fail(_ message: String) -> Never {
     FileHandle.standardError.write(Data(("juxta-diff: " + message + "\n").utf8))
@@ -17,8 +18,12 @@ func fail(_ message: String) -> Never {
 var options = DiffOptions()
 var mode = Mode.stats
 var paths: [String] = []
+var extent = HTMLReport.Extent.context(3)
+var extentGiven = false
+var includesPaths = false
 var endOfOptions = false
-for argument in CommandLine.arguments.dropFirst() {
+var arguments = CommandLine.arguments.dropFirst().makeIterator()
+while let argument = arguments.next() {
     if endOfOptions {
         paths.append(argument)
         continue
@@ -31,6 +36,19 @@ for argument in CommandLine.arguments.dropFirst() {
     case "--stats": mode = .stats
     case "--json": mode = .json
     case "--rows": mode = .rows
+    case "--html": mode = .html
+    case "--context":
+        guard let value = arguments.next(), let lines = Int(value), lines >= 0 else {
+            fail("--context needs a number of lines\n" + usage)
+        }
+        extent = .context(lines)
+        extentGiven = true
+    case "--all":
+        extent = .all
+        extentGiven = true
+    case "--paths":
+        includesPaths = true
+        extentGiven = true
     case "-h", "--help":
         print(usage)
         exit(0)
@@ -40,6 +58,7 @@ for argument in CommandLine.arguments.dropFirst() {
     }
 }
 guard paths.count == 2 else { fail("expected two files\n" + usage) }
+if extentGiven && mode != .html { fail("--context, --all and --paths go with --html\n" + usage) }
 if paths == ["-", "-"] { fail("only one file can be standard input") }
 
 func load(_ path: String) -> TextDocument {
@@ -115,6 +134,15 @@ case .rows:
             print("~ " + marked(a, inline?.left ?? []) + " => " + marked(b, inline?.right ?? []))
         }
     }
+case .html:
+    var report = HTMLReport(left: left, right: right, result: result, options: options)
+    report.extent = extent
+    // Names only unless asked: the page is meant to be shared. Standard input has no path.
+    if includesPaths {
+        report.leftPath = left.url.map { HTMLReport.displayPath($0.path) }
+        report.rightPath = right.url.map { HTMLReport.displayPath($0.path) }
+    }
+    FileHandle.standardOutput.write(Data(report.render().utf8))
 case .json:
     let hunks: [[String: Any]] = result.hunks.map { hunk in
         let (l, r) = ranges(hunk)

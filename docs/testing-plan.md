@@ -260,6 +260,11 @@ Manual before release (needs a person or the installed app):
         pane: each opens in its own window.
   - [ ] Toggle an option in a saved window: the menu and toolbar checkmarks follow, and a new
         window's options are unchanged.
+  - [ ] Export as HTML…: the context and All lines radios, the context field, the Include file
+        paths checkbox, all remembered, and the suggested `.html` name. A write error shows an
+        alert (export into a read-only folder).
+  - [ ] An exported page printed from Safari: rows aren't split across pages and the colors
+        print. Also a look with Increase Contrast on, and in Chrome or Firefox.
 
 ## Open questions
 
