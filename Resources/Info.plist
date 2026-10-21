@@ -28,8 +28,41 @@
 	<string>NSApplication</string>
 	<key>NSHumanReadableCopyright</key>
 	<string>© 2026 Chris Karwoski</string>
+	<key>UTExportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>com.moondustries.juxta.comparison</string>
+			<key>UTTypeDescription</key>
+			<string>Juxta Comparison</string>
+			<key>UTTypeConformsTo</key>
+			<array>
+				<string>public.data</string>
+				<string>public.content</string>
+			</array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array>
+					<string>juxta</string>
+				</array>
+			</dict>
+		</dict>
+	</array>
 	<key>CFBundleDocumentTypes</key>
 	<array>
+		<dict>
+			<key>CFBundleTypeName</key>
+			<string>Juxta Comparison</string>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>LSHandlerRank</key>
+			<string>Owner</string>
+			<key>LSItemContentTypes</key>
+			<array>
+				<string>com.moondustries.juxta.comparison</string>
+			</array>
+		</dict>
 		<dict>
 			<key>CFBundleTypeName</key>
 			<string>Text or Data File</string>

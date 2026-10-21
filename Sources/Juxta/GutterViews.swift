@@ -333,6 +333,11 @@ final class PaneHeaderView: HeaderBackgroundView {
             detailLabel.stringValue = "\(folder) · \(lineCount)"
             iconView.image = NSWorkspace.shared.icon(forFile: url.path)
             toolTip = url.path
+        } else if document.format != nil {
+            // A file side reopened from a saved comparison: its bytes, but no file.
+            detailLabel.stringValue = "Saved file · \(lineCount)"
+            iconView.image = NSImage(systemSymbolName: "doc", accessibilityDescription: nil)
+            toolTip = nil
         } else {
             detailLabel.stringValue = "Pasted text · \(lineCount)"
             iconView.image = NSImage(systemSymbolName: "doc.on.clipboard", accessibilityDescription: nil)

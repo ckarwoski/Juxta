@@ -8,7 +8,10 @@ import JuxtaCore
 /// `JUXTA_ACTIONS=next,swap,reload,prev,bigger,smaller,actual,select,selectall` runs those steps instead
 /// of JUXTA_STEPS "next"s (`select` selects characters on the left and the change on the right).
 /// `drag`, `word`, `worddrag`, `line`, `shift` and `gutter` send the panes mouse events in the change,
-/// like `select` does directly, and print what each pane would copy;
+/// like `select` does directly, and print what each pane would copy; `saveReopen` saves the
+/// comparison to $TMPDIR the way File › Save Comparison… does (JUXTA_NOTE sets the note) and
+/// replaces the window with one opened from that file; `reopenPaste` opens that file again
+/// and pastes on the left while it is still loading, then closes the old window;
 /// `JUXTA_HC=1` uses the Increase Contrast appearance (with JUXTA_DARK, the dark one);
 /// `JUXTA_AX=1` prints what VoiceOver would see after each capture; `JUXTA_SETTINGS=1` also
 /// captures the Settings window.
@@ -29,7 +32,7 @@ enum DebugSnapshot {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
             guard let window = NSApp.windows.first(where: { $0.windowController is CompareWindowController }),
                   let controller = window.windowController as? CompareWindowController else { exit(1) }
-            print("subtitle:", window.subtitle)
+            print("title:", window.title, "subtitle:", window.subtitle)
             capture(window, "\(prefix)-0.png")
             // JUXTA_SETTINGS: also capture the Settings window.
             if ProcessInfo.processInfo.environment["JUXTA_SETTINGS"] != nil {
@@ -69,10 +72,15 @@ enum DebugSnapshot {
         case "select": select(controller)
         case "selectall": controller.debugPanes[0].selectAll(nil)
         case "drag", "word", "worddrag", "line", "shift", "gutter": mouse(action, controller)
+        case "saveReopen": saveReopen(controller)
+        case "reopenPaste": reopenPaste(controller)
         default: controller.goToNextChange(nil)
         }
         DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-            print("step \(n) \(action) subtitle:", window.subtitle)
+            // saveReopen replaced the window; the later steps use the new one.
+            let window = NSApp.windows.first { $0.isVisible && $0.windowController is CompareWindowController } ?? window
+            let controller = window.windowController as? CompareWindowController ?? controller
+            print("step \(n) \(action) title:", window.title, "subtitle:", window.subtitle)
             if dumpsAccessibility {
                 print("announcement:", controller.lastAnnouncement ?? "none")
             }
@@ -98,6 +106,33 @@ enum DebugSnapshot {
                                            head: .init(row: rows.lowerBound + 2, offset: 9))
         panes[1].selection = TextSelection(rows: rows.lowerBound, to: rows.upperBound - 1, in: p.result,
                                            on: \.right, lines: right.lines)
+    }
+
+    private static func saveReopen(_ controller: CompareWindowController) {
+        let p = controller.presentation
+        guard let left = p.left, let right = p.right else { return }
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Juxta saveReopen.juxta")
+        let note = ProcessInfo.processInfo.environment["JUXTA_NOTE"] ?? "Saved by saveReopen"
+        controller.write(to: url, leftName: left.name, rightName: right.name, note: note) { error in
+            if let error {
+                print("saveReopen failed:", error.localizedDescription)
+                return
+            }
+            print("saveReopen wrote", url.path)
+            print("recent:", NSDocumentController.shared.recentDocumentURLs.map(\.lastPathComponent))
+            (NSApp.delegate as? AppDelegate)?.openFiles([url])
+            controller.close()
+        }
+    }
+
+    private static func reopenPaste(_ controller: CompareWindowController) {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("Juxta saveReopen.juxta")
+        let before = Set(NSApp.windows.map(ObjectIdentifier.init))
+        (NSApp.delegate as? AppDelegate)?.openFiles([url])
+        guard let opened = NSApp.windows.first(where: { !before.contains(ObjectIdentifier($0)) })?.windowController
+                as? CompareWindowController else { return }
+        opened.paste("Pasted by reopenPaste\n", into: .left)
+        controller.close()
     }
 
     private static let mouseActions: Set = ["drag", "word", "worddrag", "line", "shift", "gutter"]

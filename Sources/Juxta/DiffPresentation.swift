@@ -69,6 +69,11 @@ final class DiffPresentation {
         setResult(Comparator.passthrough(leftCount: left?.lines.count, rightCount: right?.lines.count))
     }
 
+    /// Only the name changes, so the result stays.
+    func rename(_ side: Side, to name: String) {
+        if side == .left { left?.name = name } else { right?.name = name }
+    }
+
     /// Swapping mirrors the result, which stays valid for the swapped documents.
     func swapDocuments() {
         swap(&left, &right)

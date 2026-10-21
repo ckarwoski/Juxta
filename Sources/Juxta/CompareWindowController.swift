@@ -1,5 +1,6 @@
 import AppKit
 import JuxtaCore
+import UniformTypeIdentifiers
 
 struct ScrollMetrics {
     var offset: CGFloat
@@ -89,6 +90,31 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// view was then: its change is revealed when it arrives unless the user scrolled.
     private var pendingReveal: (row: Int, origin: [NSPoint])?
     var onClose: ((CompareWindowController) -> Void)?
+
+    /// The saved comparison shown, from the `.juxta` file this window opened or last saved
+    /// to; nil once a side is replaced, since the window no longer shows it.
+    private(set) var saved: SavedComparison?
+    private var savedURL: URL?
+    /// The sides of the comparison last opened or saved here. A side that came from a
+    /// `.juxta` file has no file to read again, so saving takes its bytes from these.
+    private var snapshotSides: [SavedComparison.Side] = []
+    /// Sides whose bytes were edited after they were saved.
+    private var editedSides: Set<Side> = []
+    /// Counts document changes, swaps included, so a save that finishes after one
+    /// doesn't relabel the window with the names it was given for the old sides.
+    private var documentsVersion = 0
+    /// Sides still showing what a `.juxta` file opened here. While there are any, the
+    /// window keeps the options saved in that file instead of remembering its toggles.
+    private var openedSides: Set<Side> = []
+    private var remembersOptions: Bool { openedSides.isEmpty }
+    /// A save is writing; another waits until it's done.
+    private var isSaving = false
+
+    /// This window's options; new windows start from `Preferences.options`.
+    private var options: DiffOptions {
+        get { presentation.options }
+        set { presentation.options = newValue }
+    }
 
     init() {
         presentation = DiffPresentation(options: Preferences.options, textStyle: Preferences.textStyle)
@@ -276,7 +302,9 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
                 var failures: [String] = []
                 for (side, result) in [(Side.left, leftResult), (Side.right, rightResult)] where sides.contains(side) {
                     switch result {
-                    case .success(let document)?: self.presentation.setDocument(document, for: side)
+                    case .success(let document)?:
+                        self.sideReplaced(side)
+                        self.presentation.setDocument(document, for: side)
                     case .failure(let error)?:
                         failures.append("\(side == .left ? "Left" : "Right"): \(error.localizedDescription)")
                     case nil: break
@@ -301,6 +329,10 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     private func handleDrop(_ urls: [URL], on side: Side) {
+        // A saved comparison opens in its own window, never on one side of this one.
+        let comparisons = urls.filter(Self.isSavedComparison)
+        if !comparisons.isEmpty { (NSApp.delegate as? AppDelegate)?.openFiles(comparisons) }
+        let urls = urls.filter { !Self.isSavedComparison($0) }
         if urls.count >= 2 {
             load(left: urls[0], right: urls[1])
         } else if let url = urls.first {
@@ -311,6 +343,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     private func setPastedText(_ text: String, on side: Side) {
         let anchor = topLine()
         pendingLoads[side] = nil
+        sideReplaced(side)
         presentation.setDocument(TextDocument(text: text, name: "Pasted Text"), for: side)
         documentsChanged(restoring: anchor)
     }
@@ -322,16 +355,180 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// Shows the interim result the presentation installed for the new documents,
     /// then compares them.
     private func documentsChanged(restoring anchor: (side: Side, line: Int)? = nil) {
+        documentsVersion += 1
         leftPane.diffView.clearSelection()
         rightPane.diffView.clearSelection()
-        let names = [presentation.left?.name, presentation.right?.name]
-        if names.allSatisfy({ $0 == nil }) {
-            window?.title = "Juxta"
-        } else {
-            window?.title = names.map { $0 ?? "…" }.joined(separator: " ⇄ ")
-        }
+        updateTitle()
         showResult(restoring: anchor)
         recompute()
+    }
+
+    private func updateTitle() {
+        guard let window else { return }
+        window.representedURL = savedURL
+        let names = [presentation.left?.name, presentation.right?.name]
+        if let savedURL {
+            window.title = FileManager.default.displayName(atPath: savedURL.path)
+        } else if names.allSatisfy({ $0 == nil }) {
+            window.title = "Juxta"
+        } else {
+            window.title = names.map { $0 ?? "…" }.joined(separator: " ⇄ ")
+        }
+    }
+
+    /// A side loaded or pasted over leaves the saved comparison behind. Its sides are
+    /// kept, since the other side may still be one of them.
+    private func sideReplaced(_ side: Side) {
+        editedSides.remove(side)
+        openedSides.remove(side)
+        saved = nil
+        savedURL = nil
+    }
+
+    // MARK: Saved comparisons
+
+    static func isSavedComparison(_ url: URL) -> Bool {
+        url.pathExtension.lowercased() == "juxta"
+    }
+
+    /// Declared in Info.plist; a SwiftPM build has no Info.plist, so it falls back to a
+    /// type made from the extension.
+    private static let comparisonType = UTType("com.moondustries.juxta.comparison")
+        ?? UTType(filenameExtension: "juxta", conformingTo: .data) ?? .data
+
+    /// Opens a `.juxta` file in this window, which is new. If it can't be read, an alert
+    /// says why and the window closes.
+    func open(savedAt url: URL) {
+        loadGeneration += 1
+        let token = loadGeneration
+        pendingLoads = [.left: token, .right: token]
+        busyChanged(restartingDelay: true)
+        updateSubtitle()
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { () -> (SavedComparison, TextDocument, TextDocument) in
+                let saved = try SavedComparison(data: Data(contentsOf: url, options: .mappedIfSafe))
+                let documents = try saved.documents()
+                return (saved, documents.left, documents.right)
+            }
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                // Half a saved comparison is never shown: pasting over a side drops it,
+                // and the other side stops waiting for it.
+                guard self.pendingLoads[.left] == token, self.pendingLoads[.right] == token else {
+                    for side in [Side.left, .right] where self.pendingLoads[side] == token {
+                        self.pendingLoads[side] = nil
+                    }
+                    self.updateSubtitle()
+                    return
+                }
+                switch result {
+                case .success(let (saved, left, right)):
+                    self.saved = saved
+                    self.savedURL = url
+                    self.snapshotSides = [saved.left, saved.right]
+                    self.editedSides = Set([(Side.left, saved.left), (.right, saved.right)]
+                        .filter { !$0.1.matchesDigest }.map(\.0))
+                    self.openedSides = [.left, .right]
+                    self.options = saved.options
+                    self.presentation.setDocument(left, for: .left)
+                    self.presentation.setDocument(right, for: .right)
+                    self.documentsChanged()
+                    NSDocumentController.shared.noteNewRecentDocumentURL(url)
+                    self.pendingLoads.removeAll()
+                    self.updateSubtitle()
+                case .failure(let error):
+                    self.pendingLoads.removeAll()
+                    self.updateSubtitle()
+                    guard let window = self.window else { return }
+                    let alert = NSAlert()
+                    alert.messageText = "“\(url.lastPathComponent)” couldn't be opened"
+                    alert.informativeText = error.localizedDescription
+                    alert.beginSheetModal(for: window) { _ in self.close() }
+                }
+            }
+        }
+    }
+
+    @objc func saveComparison(_ sender: Any?) {
+        guard let window, let left = presentation.left, let right = presentation.right else { return }
+        let panel = NSSavePanel()
+        panel.allowedContentTypes = [Self.comparisonType]
+        panel.isExtensionHidden = false
+        let fields = SaveFields(panel: panel, left: left.name, right: right.name, note: saved?.note ?? "")
+        panel.accessoryView = fields.view
+        panel.beginSheetModal(for: window) { [weak self] response in
+            guard response == .OK, let url = panel.url, let self else { return }
+            self.write(to: url, leftName: fields.leftName, rightName: fields.rightName, note: fields.note) { error in
+                if let error { self.saveFailed(error) }
+            }
+        }
+    }
+
+    /// Writes both sides to `url`, file sides read again from disk and checked against
+    /// what was compared. Both the save panel and the debug `saveReopen` step save here.
+    func write(to url: URL, leftName: String, rightName: String, note: String,
+               completion: @escaping (Error?) -> Void) {
+        guard let left = presentation.left, let right = presentation.right else {
+            return completion(SaveError.emptySide)
+        }
+        let options = options, previous = snapshotSides, version = documentsVersion
+        isSaving = true
+        DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+            let result = Result { () -> SavedComparison in
+                func side(_ document: TextDocument, _ name: String) throws -> SavedComparison.Side {
+                    let data = document.url.flatMap { try? Data(contentsOf: $0) }
+                    var side = try SavedComparison.Side(document: document, fileData: data, previous: previous)
+                    side.name = name.isEmpty ? document.name : name
+                    return side
+                }
+                let saved = SavedComparison(note: note, options: options,
+                                            left: try side(left, leftName), right: try side(right, rightName))
+                try saved.encode().write(to: url, options: .atomic)
+                return saved
+            }
+            DispatchQueue.main.async { [weak self] in
+                self?.isSaving = false
+                switch result {
+                case .success(let saved):
+                    NSDocumentController.shared.noteNewRecentDocumentURL(url)
+                    if let self, version == self.documentsVersion { self.didSave(saved, to: url) }
+                    completion(nil)
+                case .failure(let error):
+                    completion(error)
+                }
+            }
+        }
+    }
+
+    private func didSave(_ saved: SavedComparison, to url: URL) {
+        self.saved = saved
+        savedURL = url
+        snapshotSides = [saved.left, saved.right]
+        editedSides = Set([(Side.left, saved.left), (.right, saved.right)].filter { !$0.1.matchesDigest }.map(\.0))
+        presentation.rename(.left, to: saved.left.name)
+        presentation.rename(.right, to: saved.right.name)
+        refreshViews()
+        updateTitle()
+        updateSubtitle()
+    }
+
+    private func saveFailed(_ error: Error) {
+        guard let window else { return }
+        let alert = NSAlert()
+        switch error {
+        case SavedComparisonError.fileChanged, SavedComparisonError.fileMissing:
+            alert.messageText = error.localizedDescription
+            alert.informativeText = "Juxta saves only what it compared. Reload to compare the files as they are now, then save again."
+            alert.addButton(withTitle: "Reload")
+            alert.addButton(withTitle: "Cancel")
+            alert.beginSheetModal(for: window) { [weak self] response in
+                if response == .alertFirstButtonReturn { self?.reloadDocuments(nil) }
+            }
+        default:
+            alert.messageText = "The comparison couldn't be saved"
+            alert.informativeText = error.localizedDescription
+            alert.beginSheetModal(for: window)
+        }
     }
 
     // MARK: Comparing
@@ -353,7 +550,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         // Chained after a load, the delay that started with the load carries on.
         busyChanged(restartingDelay: !isLoading)
         updateSubtitle()
-        let options = presentation.options
+        let options = options
         let cancellation = Cancellation()
         self.cancellation = cancellation
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
@@ -516,7 +713,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             hidden = left.hiddenDifferences(from: right)
             bytesSame = left.isByteIdentical(to: right)
         }
-        let ignoringAny = presentation.options.ignoresAny
+        let ignoringAny = options.ignoresAny
         if result.isIdentical {
             if !hidden.isEmpty {
                 parts.append("Same text")
@@ -541,15 +738,31 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
             if result.insertedLines > 0 { parts.append("\(result.insertedLines.formatted()) added") }
         }
         var ignoring: [String] = []
-        if presentation.options.ignoreWhitespace { ignoring.append("whitespace") }
-        if presentation.options.ignoreCase { ignoring.append("case") }
-        if presentation.options.ignoreTimers { ignoring.append("timers") }
+        if options.ignoreWhitespace { ignoring.append("whitespace") }
+        if options.ignoreCase { ignoring.append("case") }
+        if options.ignoreTimers { ignoring.append("timers") }
         if !hidden.isEmpty { parts.append("differs in " + Self.listed(hidden.map(\.rawValue))) }
-        if !ignoring.isEmpty { parts.append("ignoring " + Self.listed(ignoring)) }
+        // A saved comparison names the options it was saved with up front.
+        if !ignoring.isEmpty && options != saved?.options { parts.append("ignoring " + Self.listed(ignoring)) }
         if result.isApproximate { parts.append("approximate (comparison timed out)") }
-        window.subtitle = parts.joined(separator: " · ")
-        if result.isIdentical {
-            noticeOverlay.show(window.subtitle, identical: hidden.isEmpty && bytesSame == true)
+
+        var savedParts: [String] = []
+        if let saved {
+            savedParts.append("Saved " + saved.saved.formatted(date: .abbreviated, time: .omitted))
+            if !saved.note.isEmpty { savedParts.append(saved.note) }
+            let titles = [(saved.options.ignoreWhitespace, "Ignore Whitespace"), (saved.options.ignoreCase, "Ignore Case"),
+                          (saved.options.ignoreTimers, "Ignore Timers")].filter(\.0).map(\.1)
+            if !titles.isEmpty { savedParts.append(Self.listed(titles)) }
+        }
+        let edited: String? = switch editedSides.count {
+        case 0: nil
+        case 1: "The \(editedSides.first == .left ? "left" : "right") side was edited after it was saved"
+        default: "Both sides were edited after they were saved"
+        }
+        window.subtitle = (savedParts + [edited].compactMap { $0 } + parts).joined(separator: " · ")
+        if result.isIdentical || edited != nil {
+            let notice = ([edited].compactMap { $0 } + (result.isIdentical ? parts : [])).joined(separator: " · ")
+            noticeOverlay.show(notice, identical: edited == nil && hidden.isEmpty && bytesSame == true)
             noticeWanted = true
             updateNoticeVisibility()
         }
@@ -870,25 +1083,29 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// Pending loads are dropped: they would land on the side they were opened for.
     @objc func swapSides(_ sender: Any?) {
         pendingLoads.removeAll()
+        editedSides = Set(editedSides.map { $0 == .left ? .right : .left })
+        openedSides = Set(openedSides.map { $0 == .left ? .right : .left })
         presentation.swapDocuments()
         documentsChanged(restoring: topLine())
     }
 
     @objc func toggleIgnoreWhitespace(_ sender: Any?) {
-        presentation.options.ignoreWhitespace.toggle()
-        Preferences.options = presentation.options
-        recompute()
+        options.ignoreWhitespace.toggle()
+        optionsChanged()
     }
 
     @objc func toggleIgnoreCase(_ sender: Any?) {
-        presentation.options.ignoreCase.toggle()
-        Preferences.options = presentation.options
-        recompute()
+        options.ignoreCase.toggle()
+        optionsChanged()
     }
 
     @objc func toggleIgnoreTimers(_ sender: Any?) {
-        presentation.options.ignoreTimers.toggle()
-        Preferences.options = presentation.options
+        options.ignoreTimers.toggle()
+        optionsChanged()
+    }
+
+    private func optionsChanged() {
+        if remembersOptions { Preferences.options = options }
         recompute()
     }
 
@@ -923,11 +1140,13 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
         switch item.action {
         case #selector(toggleIgnoreWhitespace(_:)):
-            item.state = presentation.options.ignoreWhitespace ? .on : .off
+            item.state = options.ignoreWhitespace ? .on : .off
         case #selector(toggleIgnoreCase(_:)):
-            item.state = presentation.options.ignoreCase ? .on : .off
+            item.state = options.ignoreCase ? .on : .off
         case #selector(toggleIgnoreTimers(_:)):
-            item.state = presentation.options.ignoreTimers ? .on : .off
+            item.state = options.ignoreTimers ? .on : .off
+        case #selector(saveComparison(_:)):
+            return !hasEmptySide && !isLoading && !isComparing && !isSaving
         case #selector(goToNextChange(_:)), #selector(goToPreviousChange(_:)):
             return !presentation.result.hunks.isEmpty
         case #selector(reloadDocuments(_:)):
@@ -967,5 +1186,79 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         pendingProgress = nil
         NotificationCenter.default.removeObserver(self)
         onClose?(self)
+    }
+}
+
+private enum SaveError: LocalizedError {
+    case emptySide
+
+    var errorDescription: String? {
+        switch self {
+        case .emptySide: return "Both sides need something to compare before the comparison can be saved."
+        }
+    }
+}
+
+/// The save panel's fields for the names and note. The file name follows them until it
+/// is edited: the note when there is one, else "<left> vs <right>".
+private final class SaveFields: NSObject, NSTextFieldDelegate {
+    let view: NSView
+    private let panel: NSSavePanel
+    private let fields: [NSTextField]
+    private var suggested = ""
+
+    var leftName: String { fields[0].stringValue }
+    var rightName: String { fields[1].stringValue }
+    var note: String { fields[2].stringValue }
+
+    init(panel: NSSavePanel, left: String, right: String, note: String) {
+        self.panel = panel
+        fields = [left, right, note].map { NSTextField(string: $0) }
+        fields[2].placeholderString = "A ticket number or purpose"
+        let grid = NSGridView(views: zip(["Left name:", "Right name:", "Note:"], fields).map { title, field in
+            [NSTextField(labelWithString: title), field]
+        })
+        grid.column(at: 0).xPlacement = .trailing
+        grid.rowAlignment = .firstBaseline
+        grid.rowSpacing = 8
+        grid.columnSpacing = 8
+        for field in fields { field.widthAnchor.constraint(equalToConstant: 320).isActive = true }
+        let container = NSView()
+        grid.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(grid)
+        NSLayoutConstraint.activate([
+            grid.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            grid.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -20),
+            grid.topAnchor.constraint(equalTo: container.topAnchor, constant: 12),
+            grid.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -12),
+        ])
+        view = container
+        super.init()
+        for field in fields { field.delegate = self }
+        suggestName()
+    }
+
+    func controlTextDidChange(_ notification: Notification) {
+        suggestName()
+    }
+
+    private func suggestName() {
+        let trimmed = note.trimmingCharacters(in: .whitespacesAndNewlines)
+        let base = trimmed.isEmpty ? "\(leftName) vs \(rightName)" : trimmed
+        // "/" and ":" can't be in a file name.
+        var name = base.replacingOccurrences(of: "/", with: "-").replacingOccurrences(of: ":", with: "-")
+        // A leading dot would hide the file.
+        name = String(name.drop { $0 == "." || $0 == " " })
+        if name.count > 80 {
+            let cut = name.prefix(80)
+            // At the last space, unless that leaves too little.
+            name = String(cut.lastIndex(of: " ").map { cut[..<$0] }.flatMap { $0.count >= 40 ? $0 : nil } ?? cut)
+                .trimmingCharacters(in: .whitespaces)
+        }
+        name = (name.isEmpty ? "Comparison" : name) + ".juxta"
+        if panel.nameFieldStringValue.isEmpty || panel.nameFieldStringValue == suggested {
+            panel.nameFieldStringValue = name
+        }
+        suggested = name
     }
 }

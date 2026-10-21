@@ -56,11 +56,17 @@ enum MainMenu {
         menu.addItem(item("New Comparison from Clipboard", #selector(AppDelegate.newComparisonFromClipboard(_:)),
                           "n", [.command, .shift]))
         menu.addItem(item("Open…", #selector(AppDelegate.openDocument(_:)), "o"))
+        let recent = NSMenu(title: "Open Recent")
+        recent.delegate = RecentDocumentsMenu.shared
+        RecentDocumentsMenu.shared.menuNeedsUpdate(recent)
+        menu.addItem(submenu(recent))
         menu.addItem(.separator())
         menu.addItem(item("Open Left File…", #selector(CompareWindowController.chooseLeftFile(_:)), "1", [.command, .option]))
         menu.addItem(item("Open Right File…", #selector(CompareWindowController.chooseRightFile(_:)), "2", [.command, .option]))
         menu.addItem(.separator())
         menu.addItem(item("Reload", #selector(CompareWindowController.reloadDocuments(_:)), "r"))
+        menu.addItem(.separator())
+        menu.addItem(item("Save Comparison…", #selector(CompareWindowController.saveComparison(_:)), "s"))
         menu.addItem(.separator())
         menu.addItem(item("Close", #selector(NSWindow.performClose(_:)), "w"))
         return menu
@@ -108,5 +114,31 @@ enum MainMenu {
         menu.addItem(.separator())
         menu.addItem(item("Bring All to Front", #selector(NSApplication.arrangeInFront(_:))))
         return menu
+    }
+}
+
+/// File › Open Recent, filled from `NSDocumentController`'s list when it opens. Juxta
+/// doesn't use NSDocument, so AppKit doesn't manage this menu; its items open through
+/// `AppDelegate.openFiles` like any other file.
+final class RecentDocumentsMenu: NSObject, NSMenuDelegate {
+    static let shared = RecentDocumentsMenu()
+
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+        for url in NSDocumentController.shared.recentDocumentURLs {
+            let item = NSMenuItem(title: FileManager.default.displayName(atPath: url.path),
+                                  action: #selector(AppDelegate.openRecent(_:)), keyEquivalent: "")
+            item.representedObject = url
+            item.toolTip = (url.path as NSString).abbreviatingWithTildeInPath
+            let icon = NSWorkspace.shared.icon(forFile: url.path)
+            icon.size = NSSize(width: 16, height: 16)
+            item.image = icon
+            menu.addItem(item)
+        }
+        if !menu.items.isEmpty { menu.addItem(.separator()) }
+        let clear = NSMenuItem(title: "Clear Menu", action: #selector(NSDocumentController.clearRecentDocuments(_:)),
+                               keyEquivalent: "")
+        clear.target = NSDocumentController.shared
+        menu.addItem(clear)
     }
 }

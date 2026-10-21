@@ -111,9 +111,9 @@ sha256: 41aa…
 - Each body starts on the line after `--- left` or `--- right`, is exactly `bytes` long, and is
   followed by one `\n`. The byte counts make parsing exact for CRLF, UTF-16 and missing final
   newlines.
-- UTType `net.karwoski.juxta.comparison`, extension `.juxta`, conforming to `public.data`. It
-  doesn't conform to `public.text`, because the sides may be UTF-16, but TextEdit or BBEdit can
-  still open the file when asked to.
+- UTType `com.moondustries.juxta.comparison`, extension `.juxta`, conforming to `public.data`
+  and `public.content`. It doesn't conform to `public.text`, because the sides may be UTF-16,
+  but TextEdit or BBEdit can still open the file when asked to.
 
 ## Changes
 

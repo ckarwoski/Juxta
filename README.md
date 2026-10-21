@@ -52,6 +52,15 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
 - **Font** (Juxta → Settings…, ⌘,): any installed monospaced font and typeface, size, line spacing,
   and ligatures (off by default, so a diff shows exactly which characters are in the file).
   Changes apply to every open window as you make them.
+- **Save and share:** File › Save Comparison… (⌘S) writes both sides to one `.juxta` file, with
+  names for each side and a note (a ticket number or purpose). Each side's original bytes are
+  saved, so encoding, line endings and the final newline come back exactly; pasted text is saved
+  too. Files are read again when saving, and Juxta won't save one that changed since it was
+  compared. Open a `.juxta` file by double-clicking it, with ⌘O or from File › Open Recent: it
+  opens in its own window with the options it was saved with, and toggling them there doesn't
+  change the options other windows use. A side edited after it was
+  saved still opens, with a notice. The file is a text header followed by both sides, so it
+  can be read in a text editor.
 - ⌘R reloads both files from disk, ⌥⌘S swaps sides. ⌘+ / ⌘− make the text bigger or smaller in
   every window; ⌘0 (Actual Size) goes back to the size set in Settings.
 - **Select and copy:** in the text, drag to select characters, double-click for a word (an

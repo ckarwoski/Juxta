@@ -64,7 +64,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
     }
 
     func openFiles(_ urls: [URL]) {
-        var queue = urls[...]
+        // A saved comparison always gets its own window, never one side of another.
+        for url in urls where CompareWindowController.isSavedComparison(url) {
+            makeController().open(savedAt: url)
+        }
+        var queue = urls.filter { !CompareWindowController.isSavedComparison($0) }[...]
         // Fill an empty frontmost window before opening new ones. A side still loading
         // isn't empty, or a second open in quick succession would replace the first.
         if let front = frontController, front.freeSides.count == 2, queue.count >= 2 {
@@ -127,6 +131,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuItemValidation {
             guard response == .OK else { return }
             self?.openFiles(panel.urls)
         }
+    }
+
+    @objc func openRecent(_ sender: NSMenuItem) {
+        guard let url = sender.representedObject as? URL else { return }
+        openFiles([url])
     }
 
     func validateMenuItem(_ item: NSMenuItem) -> Bool {
