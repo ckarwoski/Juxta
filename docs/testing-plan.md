@@ -265,6 +265,14 @@ Manual before release (needs a person or the installed app):
         alert (export into a read-only folder).
   - [ ] An exported page printed from Safari: rows aren't split across pages and the colors
         print. Also a look with Increase Contrast on, and in Chrome or Firefox.
+  - [ ] Quick Look, from an Xcode build or export of the app target (not `scripts/build.sh`):
+        `pluginkit -m -v -i com.moondustries.juxta.QuickLook` lists the extension, and Space on
+        a `.juxta` file in Finder shows the changes-only page with the note and no paths, in
+        light and dark. Also a file with an edited side (the notice), a 200k-line comparison
+        (appears within about a second; watch JuxtaQuickLook's memory), every line changed (cut
+        off), and a binary side ("Can't show this comparison").
+  - [ ] Archive and export: `scripts/check-version.sh` passes, and the exported app has
+        `Contents/PlugIns/JuxtaQuickLook.appex`, signed and notarized with the app.
 
 ## Open questions
 

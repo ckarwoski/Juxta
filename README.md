@@ -30,6 +30,10 @@ Requires Xcode (Swift 5.10+), macOS 14+.
 To make a copy that runs on other Macs, open `Juxta.xcodeproj` and choose Product → Archive, then
 Distribute App → Direct Distribution. Xcode signs it with the Developer ID certificate and
 notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode automatically.
+The version is set twice: in the project's Marketing Version and Current Project Version
+build settings, which the app and its Quick Look extension share, and in
+`Resources/Info.plist`, which `scripts/build.sh` copies as it is. Run
+`scripts/check-version.sh` before archiving to check that they match.
 
 ## Using it
 
@@ -61,7 +65,10 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
   opens in its own window with the options it was saved with, and toggling them there doesn't
   change the options other windows use. A side edited after it was
   saved still opens, with a notice. The file is a text header followed by both sides, so it
-  can be read in a text editor.
+  can be read in a text editor. Pressing Space on a `.juxta` file in Finder shows the changes
+  in Quick Look, cut off after the first 200 changes or a few thousand changed lines. Only
+  Xcode builds and releases include the Quick Look extension; `scripts/build.sh` builds with
+  SwiftPM, which can't make one.
   File › Export as HTML… (⇧⌘E) writes one self-contained page to share with people who don't
   have Juxta: the changes with a few lines of context, or all lines, in the same colors, in
   light or dark mode, and ready to print. From Terminal:
@@ -103,6 +110,8 @@ empty file named `<file> (absent)`.
   A 150k-line routing table compares in well under a second.
 - `Sources/Juxta`: the AppKit UI. Each pane draws only its visible rows with Core Text, so
   scrolling cost doesn't depend on file size.
+- `QuickLook/`: the Quick Look extension (Xcode only) that previews `.juxta` files with the
+  HTML export's page, made by `QuickLookPreview` in JuxtaCore.
 - `swift test` runs the engine tests (checked against a brute-force LCS).
   `scripts/test-juxta-diff.sh` checks `juxta-diff` itself: exit statuses, `--save`, reading
   `.juxta` files back and usage errors.

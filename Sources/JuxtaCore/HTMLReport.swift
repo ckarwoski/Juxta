@@ -31,6 +31,12 @@ public struct HTMLReport: Sendable {
     public var extent = Extent.context(3)
     /// Shows at most this many changes, then a line saying how many more there are.
     public var changeLimit: Int?
+    /// Shows at most this many rows of changes, not counting context. The change that runs
+    /// past it is cut off, for pages of unrelated files that are one change all through.
+    public var rowLimit: Int?
+    /// Stops adding rows once the rows shown take this many bytes of HTML, for pages of
+    /// long lines. Checked before each row, so the last row can go past it.
+    public var byteLimit: Int?
     public var timeZone = TimeZone.current
     public var locale = Locale.current
 
@@ -41,13 +47,23 @@ public struct HTMLReport: Sendable {
         self.options = options
     }
 
+    /// Describes the page as the saved comparison `saved`: its note, when it was saved and
+    /// which sides were edited since. Shared by `juxta-diff --html` and Quick Look so they
+    /// say the same thing; paths are left as they are.
+    public mutating func describe(_ saved: SavedComparison) {
+        note = saved.note
+        date = saved.saved
+        dateLabel = "Saved"
+        notices = [saved.editedNotice].compactMap { $0 }
+    }
+
     /// A path as the page shows it, with the home folder as `~`.
     public static func displayPath(_ path: String) -> String {
         (path as NSString).abbreviatingWithTildeInPath
     }
 
     public func render() -> String {
-        let (ranges, omitted) = shownRows()
+        let (ranges, omitted, cut) = shownRows()
         var out = ""
         let shownCount = ranges.reduce(0) { $0 + $1.count }
         out.reserveCapacity(8_000 + shownCount * 160)
@@ -60,9 +76,15 @@ public struct HTMLReport: Sendable {
         let digits = String(max(left.lines.count, right.lines.count, 1)).count
         out += "col.n { width: calc(\(digits)ch + 14px); }\n</style>\n</head>\n<body>\n"
         appendHeader(to: &out)
-        appendBody(ranges, omitted: omitted, to: &out)
-        if omitted > 0 {
-            out += "<p class=\"more\">\(number(omitted)) more \(omitted == 1 ? "change" : "changes") not shown</p>\n"
+        var (rowsLeft, changesLeft) = (cut, omitted)
+        if let stop = appendBody(ranges, truncated: omitted > 0 || cut > 0, to: &out) {
+            (rowsLeft, changesLeft) = remainder(from: stop)
+        }
+        if rowsLeft > 0 || changesLeft > 0 {
+            var more: [String] = []
+            if rowsLeft > 0 { more.append("\(number(rowsLeft)) more \(rowsLeft == 1 ? "row" : "rows") of this change") }
+            if changesLeft > 0 { more.append("\(number(changesLeft)) more \(changesLeft == 1 ? "change" : "changes")") }
+            out += "<p class=\"more\">\(more.joined(separator: " and ")) not shown</p>\n"
         }
         out += "</body>\n</html>\n"
         return out
@@ -70,23 +92,44 @@ public struct HTMLReport: Sendable {
 
     // MARK: - Rows
 
-    /// The runs of rows to show, in order, and how many changes were left out.
-    func shownRows() -> (ranges: [Range<Int>], omitted: Int) {
+    /// The runs of rows to show, in order, how many changes were left out, and how many
+    /// rows of the last change shown were cut off by `rowLimit`.
+    func shownRows() -> (ranges: [Range<Int>], omitted: Int, cut: Int) {
         let count = result.rows.count
-        let hunks = changeLimit.map { Array(result.hunks.prefix(max(0, $0))) } ?? result.hunks
+        var hunks = changeLimit.map { Array(result.hunks.prefix(max(0, $0))) } ?? result.hunks
+        var cut = 0
+        if let rowLimit {
+            var remaining = max(0, rowLimit)
+            for (index, hunk) in hunks.enumerated() {
+                guard hunk.rows.count > remaining else {
+                    remaining -= hunk.rows.count
+                    continue
+                }
+                hunks.removeSubrange(index...)
+                // A change with no room left is left out whole.
+                if remaining > 0 {
+                    hunks.append(Hunk(rows: hunk.rows.lowerBound..<hunk.rows.lowerBound + remaining))
+                    cut = hunk.rows.count - remaining
+                }
+                break
+            }
+        }
         let omitted = result.hunks.count - hunks.count
+        let truncated = omitted > 0 || cut > 0
         switch extent {
         case .all:
-            let end = omitted > 0 ? hunks.last?.rows.upperBound ?? 0 : count
-            return (end > 0 ? [0..<end] : [], omitted)
+            let end = truncated ? hunks.last?.rows.upperBound ?? 0 : count
+            return (end > 0 ? [0..<end] : [], omitted, cut)
         case .context(let lines):
             let lines = max(0, lines)
             var ranges: [Range<Int>] = []
-            for hunk in hunks {
-                var range = max(0, hunk.rows.lowerBound - lines)..<min(count, hunk.rows.upperBound + lines)
+            for (index, hunk) in hunks.enumerated() {
+                // A change that was cut off has no context after it.
+                let after = cut > 0 && index == hunks.count - 1 ? 0 : lines
+                var range = max(0, hunk.rows.lowerBound - lines)..<min(count, hunk.rows.upperBound + after)
                 // A single hidden line is shown instead: its separator would be as tall.
                 if range.lowerBound == 1 { range = 0..<range.upperBound }
-                if range.upperBound == count - 1 && omitted == 0 { range = range.lowerBound..<count }
+                if range.upperBound == count - 1 && !truncated { range = range.lowerBound..<count }
                 // Changes closer than 2N lines share their context.
                 if let last = ranges.last, range.lowerBound <= last.upperBound + 1 {
                     ranges[ranges.count - 1] = last.lowerBound..<range.upperBound
@@ -94,26 +137,52 @@ public struct HTMLReport: Sendable {
                     ranges.append(range)
                 }
             }
-            return (ranges, omitted)
+            return (ranges, omitted, cut)
         }
     }
 
-    private func appendBody(_ ranges: [Range<Int>], omitted: Int, to out: inout String) {
+    /// Adds the table of rows. Returns the first row left out when `byteLimit` stopped it,
+    /// or nil when every row in `ranges` was added.
+    @discardableResult
+    private func appendBody(_ ranges: [Range<Int>], truncated: Bool, to out: inout String) -> Int? {
         let rows = result.rows
-        guard !rows.isEmpty else { return }
-        // When changes were left out, the line saying so follows the last one shown
-        // instead of a count of the lines after it.
-        let trailingSkip = omitted == 0 || ranges.isEmpty
+        guard !rows.isEmpty else { return nil }
+        // When changes were left out or cut off, the line saying so follows the last one
+        // shown instead of a count of the lines after it.
+        var trailingSkip = !truncated || ranges.isEmpty
         out += "<table class=\"diff\">\n<colgroup><col class=\"n\"/><col class=\"s\"/><col class=\"t\"/>"
         out += "<col class=\"n\"/><col class=\"s\"/><col class=\"t\"/></colgroup>\n<tbody>\n"
+        let start = out.utf8.count
         var position = 0
-        for range in ranges {
+        var stop: Int?
+        rows: for range in ranges {
             if range.lowerBound > position { appendSkip(range.lowerBound - position, to: &out) }
-            for index in range { appendRow(rows[index], to: &out) }
+            for index in range {
+                if let byteLimit, out.utf8.count - start >= byteLimit {
+                    stop = index
+                    break rows
+                }
+                appendRow(rows[index], to: &out)
+            }
             position = range.upperBound
+        }
+        if let stop {
+            // With no changes after it, the rest is counted as unchanged lines as usual.
+            position = stop
+            trailingSkip = remainder(from: stop) == (0, 0)
         }
         if trailingSkip && position < rows.count { appendSkip(rows.count - position, to: &out) }
         out += "</tbody>\n</table>\n"
+        return stop
+    }
+
+    /// What isn't shown when the page stops before `row`: the rest of the change it stops
+    /// in, if some of that change was shown, and the changes after it.
+    private func remainder(from row: Int) -> (rows: Int, changes: Int) {
+        if let index = result.hunk(containing: row), result.hunks[index].rows.lowerBound < row {
+            return (result.hunks[index].rows.upperBound - row, result.hunks.count - index - 1)
+        }
+        return (0, result.hunks.count - result.firstHunk(atOrAfter: row))
     }
 
     private func appendSkip(_ count: Int, to out: inout String) {

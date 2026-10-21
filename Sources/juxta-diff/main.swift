@@ -213,12 +213,7 @@ case .html:
         report.leftPath = (left.url?.path ?? saved?.left.path).map(HTMLReport.displayPath)
         report.rightPath = (right.url?.path ?? saved?.right.path).map(HTMLReport.displayPath)
     }
-    if let saved {
-        report.note = saved.note
-        report.date = saved.saved
-        report.dateLabel = "Saved"
-        report.notices = [saved.editedNotice].compactMap { $0 }
-    }
+    if let saved { report.describe(saved) }
     FileHandle.standardOutput.write(Data(report.render().utf8))
 case .json:
     let hunks: [[String: Any]] = result.hunks.map { hunk in

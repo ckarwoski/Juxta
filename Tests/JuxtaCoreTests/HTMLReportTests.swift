@@ -192,6 +192,78 @@ final class HTMLReportTests: XCTestCase {
         XCTAssertFalse(page.render().contains("class=\"more\""))
     }
 
+    func testRowLimit() {
+        // Changes of 1, 2 and 30 rows at lines 10, 30-31 and 50-79.
+        let changed = Dictionary(uniqueKeysWithValues: ([10, 30, 31] + Array(50...79)).map { ($0, "line \($0) x") })
+        let left = pasted(numbered(100), "a"), right = pasted(numbered(100, changing: changed), "b")
+        for extent in [HTMLReport.Extent.context(3), .all] {
+            var page = report(left, right, extent: extent)
+            page.rowLimit = 13
+            var html = page.render()
+            assertWellFormed(html)
+            XCTAssertTrue(html.contains("<p class=\"more\">20 more rows of this change not shown</p>"), "\(extent)")
+            XCTAssertTrue(html.contains("<td class=\"n c\">59</td>"))
+            XCTAssertFalse(html.contains("<td class=\"n c\">60</td>"))
+            // No context after a change that was cut off.
+            XCTAssertFalse(html.contains("<td class=\"n\">60</td>"))
+            XCTAssertFalse(html.contains("unchanged lines</td></tr>\n</tbody>"))
+
+            page.changeLimit = 2
+            page.rowLimit = 2
+            html = page.render()
+            XCTAssertTrue(html.contains("<p class=\"more\">1 more row of this change and 1 more change not shown</p>"))
+            XCTAssertTrue(html.contains("<td class=\"n c\">30</td>"))
+            XCTAssertFalse(html.contains("<td class=\"n c\">31</td>"))
+
+            // A change with no room left is left out whole.
+            page.rowLimit = 1
+            html = page.render()
+            XCTAssertTrue(html.contains("<p class=\"more\">2 more changes not shown</p>"))
+            XCTAssertFalse(html.contains("<td class=\"n c\">30</td>"))
+            XCTAssertTrue(html.contains("3 changes · 33 modified"))
+        }
+        var page = report(left, right)
+        page.rowLimit = 33
+        XCTAssertFalse(page.render().contains("class=\"more\""))
+    }
+
+    func testByteLimit() {
+        let long = String(repeating: "x", count: 2_000)
+        let left = pasted(numbered(100).map { $0 + " " + long }, "a")
+        // Every line changed: one change of 100 rows.
+        var page = report(left, pasted(numbered(100).map { $0 + " changed " + long }, "b"))
+        page.byteLimit = 40_000
+        var html = page.render()
+        assertWellFormed(html)
+        let shown = occurrences("<td class=\"n c\">", in: html) / 2
+        XCTAssertGreaterThan(shown, 0)
+        XCTAssertLessThan(shown, 20)
+        XCTAssertTrue(html.contains("<p class=\"more\">\(100 - shown) more rows of this change not shown</p>"))
+        XCTAssertFalse(html.contains("unchanged line"))
+
+        // Stopping before a change has started counts it as a change not shown; stopping in
+        // the context after the last change counts the rest as unchanged lines.
+        let right = pasted(numbered(100, changing: [10: "line 10 changed " + long]).map { $0 + " " + long }, "b")
+        let full = report(left, right).render().utf8.count
+        var sawBefore = false, sawAfter = false
+        for limit in stride(from: 1, to: full, by: 1_000) {
+            page = report(left, right)
+            page.byteLimit = limit
+            html = page.render()
+            assertWellFormed(html, "\(limit)")
+            XCTAssertFalse(html.contains("rows of this change"), "\(limit)")
+            if html.contains("<td class=\"n c\">10</td>") {
+                sawAfter = true
+                XCTAssertFalse(html.contains("class=\"more\""), "\(limit)")
+                XCTAssertTrue(html.contains("unchanged lines</td></tr>\n</tbody>"), "\(limit)")
+            } else {
+                sawBefore = true
+                XCTAssertTrue(html.contains("<p class=\"more\">1 more change not shown</p>"), "\(limit)")
+            }
+        }
+        XCTAssertTrue(sawBefore && sawAfter)
+    }
+
     func testInlineHighlightsAtTheirOffsets() {
         let pairs = [("description Café Zürich – uplink", "description Cafe Zürich – uplink"),
                      ("name 😀 and Zoë here", "name 😀 and Zoe here"),

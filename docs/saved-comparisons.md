@@ -62,8 +62,10 @@ for sharing with people who don't have Juxta.
 ### Quick Look
 
 - Pressing Space on a `.juxta` file in Finder shows the HTML export's changes-only page. For
-  very large diffs it is cut off after the first 200 changes, with a line saying how many
-  more there are.
+  very large diffs it is cut off after the first 200 changes, 5,000 changed rows or about 3 MB
+  of rows, whichever comes first, with a line saying how much more there is. One change can be
+  huge (unrelated files, or every line changed), so the change count alone doesn't keep the
+  page small.
 
 ### Command line
 

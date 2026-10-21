@@ -9,18 +9,64 @@
 /* Begin PBXBuildFile section */
 		3A679D9F5A9553F8B655F5B5 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = E16165CDF74B29292BECB5EC /* Assets.xcassets */; };
 		FEC0708C81686A47C459D98D /* JuxtaCore in Frameworks */ = {isa = PBXBuildFile; productRef = 0EB067480BAE2F2308493E0D /* JuxtaCore */; };
+		A66BA6AA2D29C300D1241968 /* JuxtaQuickLook.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A8FB1C2EDB7AA3886473C08A /* JuxtaQuickLook.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		6C6C8B5E502DC6E5DD4A92D3 /* JuxtaCore in Frameworks */ = {isa = PBXBuildFile; productRef = E3591C59DC01921FFBF6C101 /* JuxtaCore */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AFEB8CF2418F1E613DCD865E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 3138902817D0B5D22C7E1559 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = B596644552F64E572E990307;
+			remoteInfo = JuxtaQuickLook;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FC54ABC84AF17E71E34ED3A6 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				A66BA6AA2D29C300D1241968 /* JuxtaQuickLook.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		6F612B3B6D98E6D961493B1E /* Juxta */ = {isa = PBXFileReference; lastKnownFileType = folder; name = Juxta; path = .; sourceTree = SOURCE_ROOT; };
 		E0E64212389853832078C8C3 /* Juxta.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Juxta.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E16165CDF74B29292BECB5EC /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A8FB1C2EDB7AA3886473C08A /* JuxtaQuickLook.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = JuxtaQuickLook.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		5DBDF9E99799A174A0D3029E /* Exceptions for "QuickLook" folder in "JuxtaQuickLook" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				JuxtaQuickLook.entitlements,
+			);
+			target = B596644552F64E572E990307 /* JuxtaQuickLook */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
 		478CDC988C81C4DA5A01A0C3 /* Juxta */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = Juxta;
+			sourceTree = "<group>";
+		};
+		FC5C27A1E04136C37B9200FC /* QuickLook */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				5DBDF9E99799A174A0D3029E /* Exceptions for "QuickLook" folder in "JuxtaQuickLook" target */,
+			);
+			path = QuickLook;
 			sourceTree = "<group>";
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
@@ -31,6 +77,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				FEC0708C81686A47C459D98D /* JuxtaCore in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		32AF75F49301436E2C404EDE /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				6C6C8B5E502DC6E5DD4A92D3 /* JuxtaCore in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -65,6 +119,7 @@
 			isa = PBXGroup;
 			children = (
 				824CD05CCE1D46B48C1DBB34 /* Packages */,
+				FC5C27A1E04136C37B9200FC /* QuickLook */,
 				692EFA832A6862E81097FE89 /* Resources */,
 				A5D570ECFB02D356B0DFF29A /* Sources */,
 				F0AAF20634DB19E8C93FFDCF /* Products */,
@@ -75,6 +130,7 @@
 			isa = PBXGroup;
 			children = (
 				E0E64212389853832078C8C3 /* Juxta.app */,
+				A8FB1C2EDB7AA3886473C08A /* JuxtaQuickLook.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -89,10 +145,12 @@
 				F9F8E78D0A9A802B1ACD5EBA /* Sources */,
 				14F1BC9346AC0223A425AB5F /* Resources */,
 				D40D374C5AFDE86E3536E55F /* Frameworks */,
+				FC54ABC84AF17E71E34ED3A6 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				66D114B4C39F139C2510D1FC /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				478CDC988C81C4DA5A01A0C3 /* Juxta */,
@@ -105,6 +163,29 @@
 			productReference = E0E64212389853832078C8C3 /* Juxta.app */;
 			productType = "com.apple.product-type.application";
 		};
+		B596644552F64E572E990307 /* JuxtaQuickLook */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 9C8AADACDC5F6A0F7C87EB89 /* Build configuration list for PBXNativeTarget "JuxtaQuickLook" */;
+			buildPhases = (
+				91751C121B79F9C6D7BECFA3 /* Sources */,
+				B1E79FA4B9DB5E0EB394F747 /* Resources */,
+				32AF75F49301436E2C404EDE /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				FC5C27A1E04136C37B9200FC /* QuickLook */,
+			);
+			name = JuxtaQuickLook;
+			packageProductDependencies = (
+				E3591C59DC01921FFBF6C101 /* JuxtaCore */,
+			);
+			productName = JuxtaQuickLook;
+			productReference = A8FB1C2EDB7AA3886473C08A /* JuxtaQuickLook.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -115,6 +196,10 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					CC14372D627A0C8DB88BB5CE = {
+						DevelopmentTeam = RA2Y7LX38Z;
+						ProvisioningStyle = Automatic;
+					};
+					B596644552F64E572E990307 = {
 						DevelopmentTeam = RA2Y7LX38Z;
 						ProvisioningStyle = Automatic;
 					};
@@ -138,6 +223,7 @@
 			projectRoot = "";
 			targets = (
 				CC14372D627A0C8DB88BB5CE /* Juxta */,
+				B596644552F64E572E990307 /* JuxtaQuickLook */,
 			);
 		};
 /* End PBXProject section */
@@ -151,6 +237,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		B1E79FA4B9DB5E0EB394F747 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
@@ -161,7 +254,22 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		91751C121B79F9C6D7BECFA3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		66D114B4C39F139C2510D1FC /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = B596644552F64E572E990307 /* JuxtaQuickLook */;
+			targetProxy = AFEB8CF2418F1E613DCD865E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		355FF1EF29CE38A29001EF1E /* Release */ = {
@@ -198,6 +306,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -210,6 +319,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
@@ -227,7 +337,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = RA2Y7LX38Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Resources/Info.plist;
@@ -235,7 +344,6 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.moondustries.juxta;
 				PRODUCT_NAME = Juxta;
 				SDKROOT = macosx;
@@ -250,7 +358,6 @@
 				CODE_SIGN_IDENTITY = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 3;
 				DEVELOPMENT_TEAM = RA2Y7LX38Z;
 				ENABLE_HARDENED_RUNTIME = YES;
 				INFOPLIST_FILE = Resources/Info.plist;
@@ -258,7 +365,6 @@
 					"$(inherited)",
 					"@executable_path/../Frameworks",
 				);
-				MARKETING_VERSION = 1.1.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.moondustries.juxta;
 				PRODUCT_NAME = Juxta;
 				SDKROOT = macosx;
@@ -300,6 +406,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 3;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -318,6 +425,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.1.1;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -328,6 +436,50 @@
 				SWIFT_VERSION = 5.0;
 			};
 			name = Debug;
+		};
+		4AE9C175670020904CCEA6C9 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = QuickLook/JuxtaQuickLook.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = RA2Y7LX38Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = QuickLook/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.moondustries.juxta.QuickLook;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		60705399D05C4A1930BDE4A8 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = QuickLook/JuxtaQuickLook.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = RA2Y7LX38Z;
+				ENABLE_HARDENED_RUNTIME = YES;
+				INFOPLIST_FILE = QuickLook/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+					"@executable_path/../../../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.moondustries.juxta.QuickLook;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SKIP_INSTALL = YES;
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
 		};
 /* End XCBuildConfiguration section */
 
@@ -350,6 +502,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;
 		};
+		9C8AADACDC5F6A0F7C87EB89 /* Build configuration list for PBXNativeTarget "JuxtaQuickLook" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4AE9C175670020904CCEA6C9 /* Debug */,
+				60705399D05C4A1930BDE4A8 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
@@ -361,6 +522,10 @@
 
 /* Begin XCSwiftPackageProductDependency section */
 		0EB067480BAE2F2308493E0D /* JuxtaCore */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = JuxtaCore;
+		};
+		E3591C59DC01921FFBF6C101 /* JuxtaCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = JuxtaCore;
 		};
