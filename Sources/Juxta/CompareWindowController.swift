@@ -95,9 +95,10 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     /// to; nil once a side is replaced, since the window no longer shows it.
     private(set) var saved: SavedComparison?
     private var savedURL: URL?
-    /// The sides of the comparison last opened or saved here. A side that came from a
-    /// `.juxta` file has no file to read again, so saving takes its bytes from these.
-    private var snapshotSides: [SavedComparison.Side] = []
+    /// The sides of the comparison last opened or saved here, by the pane each was shown
+    /// in (mirrored on swap). A side that came from a `.juxta` file has no file to read
+    /// again, so saving takes its bytes from these, looking in its own pane's first.
+    private var snapshotSides: [Side: SavedComparison.Side] = [:]
     /// Sides whose bytes were edited after they were saved.
     private var editedSides: Set<Side> = []
     /// Counts document changes, swaps included, so a save that finishes after one
@@ -428,7 +429,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
                 case .success(let (saved, left, right)):
                     self.saved = saved
                     self.savedURL = url
-                    self.snapshotSides = [saved.left, saved.right]
+                    self.snapshotSides = [.left: saved.left, .right: saved.right]
                     self.editedSides = Set([(Side.left, saved.left), (.right, saved.right)]
                         .filter { !$0.1.matchesDigest }.map(\.0))
                     self.openedSides = [.left, .right]
@@ -479,14 +480,10 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         isSaving = true
         DispatchQueue.global(qos: .userInitiated).async { [weak self] in
             let result = Result { () -> SavedComparison in
-                func side(_ document: TextDocument, _ name: String) throws -> SavedComparison.Side {
-                    let data = document.url.flatMap { try? Data(contentsOf: $0) }
-                    var side = try SavedComparison.Side(document: document, fileData: data, previous: previous)
-                    side.name = name.isEmpty ? document.name : name
-                    return side
-                }
-                let saved = SavedComparison(note: note, options: options,
-                                            left: try side(left, leftName), right: try side(right, rightName))
+                func data(_ document: TextDocument) -> Data? { document.url.flatMap { try? Data(contentsOf: $0) } }
+                let saved = try SavedComparison(saving: left, right, fileData: (data(left), data(right)),
+                                                previous: (previous[.left], previous[.right]),
+                                                names: (leftName, rightName), note: note, options: options)
                 try saved.encode().write(to: url, options: .atomic)
                 return saved
             }
@@ -506,9 +503,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
 
     private static func paths(_ saved: SavedComparison) -> [Side: String] {
         var paths: [Side: String] = [:]
-        for (side, saved) in [(Side.left, saved.left), (.right, saved.right)] {
-            if case .file(let path) = saved.source, !path.isEmpty { paths[side] = path }
-        }
+        for (side, saved) in [(Side.left, saved.left), (.right, saved.right)] { paths[side] = saved.path }
         return paths
     }
 
@@ -567,7 +562,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     private func didSave(_ saved: SavedComparison, to url: URL) {
         self.saved = saved
         savedURL = url
-        snapshotSides = [saved.left, saved.right]
+        snapshotSides = [.left: saved.left, .right: saved.right]
         savedPaths = Self.paths(saved)
         editedSides = Set([(Side.left, saved.left), (.right, saved.right)].filter { !$0.1.matchesDigest }.map(\.0))
         presentation.rename(.left, to: saved.left.name)
@@ -794,11 +789,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
     }
 
     private var editedNotice: String? {
-        switch editedSides.count {
-        case 0: nil
-        case 1: "The \(editedSides.first == .left ? "left" : "right") side was edited after it was saved"
-        default: "Both sides were edited after they were saved"
-        }
+        SavedComparison.editedNotice(left: editedSides.contains(.left), right: editedSides.contains(.right))
     }
 
     /// The note floats over the bottom of the panes. Rows under it can be scrolled out
@@ -1112,6 +1103,7 @@ final class CompareWindowController: NSWindowController, NSWindowDelegate, NSToo
         pendingLoads.removeAll()
         editedSides = Set(editedSides.map { $0 == .left ? .right : .left })
         openedSides = Set(openedSides.map { $0 == .left ? .right : .left })
+        snapshotSides = Dictionary(uniqueKeysWithValues: snapshotSides.map { ($0 == .left ? .right : .left, $1) })
         savedPaths = Dictionary(uniqueKeysWithValues: savedPaths.map { ($0 == .left ? .right : .left, $1) })
         presentation.swapDocuments()
         documentsChanged(restoring: topLine())

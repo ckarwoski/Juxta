@@ -1,19 +1,32 @@
 #!/bin/sh
-# Compare two files in Juxta.
+# Compare two files in Juxta, or open a saved comparison.
 #   juxta left.cfg right.cfg
 #   juxta -c "$LOCAL" "$REMOTE"   # copy first (git difftool deletes its temp files)
+#   juxta saved.juxta
 # git difftool passes /dev/null for the missing side of an added or deleted file; that
 # side is shown as an empty file named after the other one.
 usage() {
     echo "usage: juxta [-c] <left> <right>" >&2
+    echo "       juxta [-c] <saved.juxta>" >&2
     echo "  -c  copy the files to a temp folder first" >&2
     exit 64
 }
+abspath() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$PWD" "$1" ;; esac; }
+
 copy=0
 if [ "$1" = "-c" ]; then copy=1; shift; fi
+
+# A saved comparison holds both sides, so it's opened as it is; -c has nothing to copy.
+if [ $# -eq 1 ]; then
+    case "$1" in
+    *.[jJ][uU][xX][tT][aA])
+        saved=$(abspath "$1")
+        [ -f "$saved" ] || { echo "juxta: $saved: No such file" >&2; exit 66; }
+        exec open -a Juxta "$saved" ;;
+    esac
+fi
 [ $# -eq 2 ] || usage
 
-abspath() { case "$1" in /*) printf '%s\n' "$1" ;; *) printf '%s/%s\n' "$PWD" "$1" ;; esac; }
 left=$(abspath "$1")
 right=$(abspath "$2")
 for f in "$left" "$right"; do

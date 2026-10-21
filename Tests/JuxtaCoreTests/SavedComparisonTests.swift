@@ -418,4 +418,112 @@ final class SavedComparisonTests: XCTestCase {
             XCTAssertEqual(error.localizedDescription, "“left.bin” appears to be a binary file.")
         }
     }
+
+    func testGivenOptionsReplaceSavedOnes() throws {
+        var saved = try sample()
+        saved.options = DiffOptions(ignoreWhitespace: true, ignoreTimers: true)
+        XCTAssertEqual(saved.options(given: DiffOptions()), saved.options)
+        // Any option given replaces the saved set, not just the options named.
+        XCTAssertEqual(saved.options(given: DiffOptions(ignoreCase: true)), DiffOptions(ignoreCase: true))
+        XCTAssertEqual(saved.options(given: DiffOptions(ignoreWhitespace: true)), DiffOptions(ignoreWhitespace: true))
+    }
+
+    func testEditedNotice() throws {
+        XCTAssertNil(try sample().editedNotice)
+        let saved = try sample(left: "left body\n", right: "right body\n")
+        let right = try SavedComparison(data: edited(saved) {
+            $0.replacingOccurrences(of: "right body", with: "RIGHT body")
+        })
+        XCTAssertEqual(right.editedNotice, "The right side was edited after it was saved")
+        let both = try SavedComparison(data: edited(saved) {
+            $0.replacingOccurrences(of: "right body", with: "RIGHT body")
+                .replacingOccurrences(of: "left body", with: "LEFT body")
+        })
+        XCTAssertEqual(both.editedNotice, "Both sides were edited after they were saved")
+        XCTAssertEqual(SavedComparison.editedNotice(left: true, right: false),
+                       "The left side was edited after it was saved")
+    }
+
+    func testSidePath() throws {
+        XCTAssertNil(try pasted("a\n").path)
+        let stdin = try SavedComparison.Side(document: TextDocument(fileData: Data("a\n".utf8), name: "-"),
+                                              fileData: Data("a\n".utf8))
+        // Standard input is recorded as "-", which isn't a path.
+        XCTAssertEqual(stdin.source, .file("-"))
+        XCTAssertNil(stdin.path)
+        XCTAssertNil(SavedComparison.Side(name: "x", source: .file(""), bytes: Data()).path)
+        XCTAssertEqual(SavedComparison.Side(name: "x", source: .file("/a/x"), bytes: Data()).path, "/a/x")
+    }
+
+    // MARK: Saving again
+
+    /// A comparison of two files, as saved from disk.
+    private func files(_ left: String, _ right: String) throws -> SavedComparison {
+        func document(_ text: String, _ path: String) throws -> TextDocument {
+            let url = URL(fileURLWithPath: path)
+            return try TextDocument(fileData: Data(text.utf8), name: url.lastPathComponent, url: url)
+        }
+        return try SavedComparison(saving: document(left, "/l/pre.txt"), document(right, "/r/post.txt"),
+                                   fileData: (Data(left.utf8), Data(right.utf8)), note: "n", saved: date,
+                                   options: DiffOptions())
+    }
+
+    /// Reopens `data` and saves it again, as the app and `juxta-diff --save` do.
+    private func resave(_ data: Data, swapped: Bool = false) throws -> SavedComparison {
+        let reopened = try SavedComparison(data: data)
+        let (left, right) = try reopened.documents()
+        if swapped {
+            return try SavedComparison(saving: right, left, previous: (reopened.right, reopened.left),
+                                       options: reopened.options)
+        }
+        return try SavedComparison(saving: left, right, previous: (reopened.left, reopened.right),
+                                   options: reopened.options)
+    }
+
+    func testSavingKeepsEachSidesOwnSourceWhenBytesMatch() throws {
+        let saved = try files("same\n", "same\n")
+        XCTAssertEqual(saved.left.source, .file("/l/pre.txt"))
+        XCTAssertEqual(saved.right.source, .file("/r/post.txt"))
+        let again = try resave(saved.encode())
+        XCTAssertEqual(again.left.source, .file("/l/pre.txt"))
+        XCTAssertEqual(again.right.source, .file("/r/post.txt"))
+        XCTAssertEqual([again.left.name, again.right.name], ["pre.txt", "post.txt"])
+        // Swapped panes pass their own sides first, so the sources swap with them.
+        let swapped = try resave(saved.encode(), swapped: true)
+        XCTAssertEqual(swapped.left.source, .file("/r/post.txt"))
+        XCTAssertEqual(swapped.right.source, .file("/l/pre.txt"))
+    }
+
+    func testSavingKeepsEditedSideThatNowMatchesTheOther() throws {
+        let saved = try files("aaa\n", "bbb\n")
+        // The right side hand-edited to the left side's bytes.
+        let data = edited(saved) { $0.replacingOccurrences(of: "--- right\nbbb\n", with: "--- right\naaa\n") }
+        XCTAssertFalse(try SavedComparison(data: data).right.matchesDigest)
+        let again = try resave(data)
+        XCTAssertTrue(again.left.matchesDigest)
+        XCTAssertFalse(again.right.matchesDigest)
+        XCTAssertEqual(again.right.source, .file("/r/post.txt"))
+        XCTAssertEqual(again.right.sha256, saved.right.sha256)
+        XCTAssertEqual(again.right.bytes, Data("aaa\n".utf8))
+        XCTAssertEqual(again.editedNotice, "The right side was edited after it was saved")
+    }
+
+    func testSavingPastedSidesAndNames() throws {
+        let saved = try sample(left: "x\n", right: "x\n")
+        let (left, right) = try saved.documents()
+        let again = try SavedComparison(saving: left, right, previous: (saved.left, saved.right),
+                                        names: ("", "renamed"), note: "new", options: DiffOptions())
+        XCTAssertEqual([again.left.name, again.right.name], ["pre", "renamed"])
+        XCTAssertEqual([again.left.source, again.right.source], [.pasted, .pasted])
+        XCTAssertEqual(again.note, "new")
+        XCTAssertEqual(again.left.bytes, saved.left.bytes)
+    }
+
+    func testSavingAFileNeedsItsBytes() throws {
+        let document = try TextDocument(fileData: Data("a\n".utf8), name: "a.txt", url: URL(fileURLWithPath: "/a.txt"))
+        XCTAssertThrowsError(try SavedComparison(saving: document, document, fileData: (nil, Data("a\n".utf8)),
+                                                 options: DiffOptions()))
+        XCTAssertThrowsError(try SavedComparison(saving: document, document, fileData: (Data("b\n".utf8), nil),
+                                                 options: DiffOptions()))
+    }
 }

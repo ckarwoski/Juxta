@@ -44,11 +44,13 @@ public struct SavedComparison: Sendable {
         /// digest from when it was loaded, so nothing is saved that wasn't compared.
         ///
         /// A side reopened from a saved comparison has no file to read. `previous` is the
-        /// sides of the comparison the window was opened from, in any order, so a swap
-        /// doesn't matter. The first one holding this document's text is kept: a file side
-        /// with the same bytes for a document with no url, or a pasted side with the same
-        /// lines for pasted text. Its saved SHA-256 is kept too, so a side edited after it
-        /// was saved still shows as edited when saved again.
+        /// sides of the comparison it was opened from, and order matters: the side this one
+        /// was opened as goes first, then the other, since both sides can hold the same
+        /// bytes. `init(saving:…)` passes them in that order. The first one holding this
+        /// document's text is kept: a file side with the same bytes for a document with no
+        /// url, or a pasted side with the same lines for pasted text. Its saved SHA-256 is
+        /// kept too, so a side edited after it was saved still shows as edited when saved
+        /// again.
         public init(document: TextDocument, fileData: Data?, previous: [Side] = []) throws {
             guard let digest = document.digest else {
                 // Pasted text has no digest; its lines tell whether a previous side is the same text.
@@ -100,6 +102,13 @@ public struct SavedComparison: Sendable {
             }
         }
 
+        /// The path a file side was loaded from; nil for pasted text and for standard
+        /// input, whose source "-" isn't a path.
+        public var path: String? {
+            if case .file(let path) = source, !path.isEmpty, path != "-" { return path }
+            return nil
+        }
+
         private static func hex(_ digest: SHA256.Digest) -> String {
             digest.map { String(format: "%02x", $0) }.joined()
         }
@@ -121,8 +130,48 @@ public struct SavedComparison: Sendable {
         self.right = right
     }
 
+    /// A comparison to save from the two documents compared. `fileData` is each file
+    /// side's bytes as read for saving (nil for pasted text, or a side with no file).
+    /// `previous` is the saved side each document was opened as, if any; each document
+    /// looks in its own first, then the other's (see `Side.init(document:fileData:previous:)`).
+    /// An empty name keeps the document's own.
+    public init(saving left: TextDocument, _ right: TextDocument,
+                fileData: (left: Data?, right: Data?) = (nil, nil),
+                previous: (left: Side?, right: Side?) = (nil, nil),
+                names: (left: String, right: String) = ("", ""),
+                note: String = "", saved: Date = Date(), options: DiffOptions) throws {
+        func side(_ document: TextDocument, _ data: Data?, _ own: Side?, _ other: Side?,
+                  _ name: String) throws -> Side {
+            var side = try Side(document: document, fileData: data, previous: [own, other].compactMap { $0 })
+            if !name.isEmpty { side.name = name }
+            return side
+        }
+        self.init(note: note, saved: saved, options: options,
+                  left: try side(left, fileData.left, previous.left, previous.right, names.left),
+                  right: try side(right, fileData.right, previous.right, previous.left, names.right))
+    }
+
     public func documents() throws -> (left: TextDocument, right: TextDocument) {
         (try left.document(), try right.document())
+    }
+
+    /// The options to compare with: the saved ones, unless any are given (on the command
+    /// line), which then replace the saved ones entirely.
+    public func options(given: DiffOptions) -> DiffOptions {
+        given.ignoresAny ? given : options
+    }
+
+    /// The warning for sides whose bytes were edited after they were saved, or nil.
+    public static func editedNotice(left: Bool, right: Bool) -> String? {
+        switch (left, right) {
+        case (false, false): return nil
+        case (true, true): return "Both sides were edited after they were saved"
+        default: return "The \(left ? "left" : "right") side was edited after it was saved"
+        }
+    }
+
+    public var editedNotice: String? {
+        Self.editedNotice(left: !left.matchesDigest, right: !right.matchesDigest)
     }
 
     // MARK: - Writing

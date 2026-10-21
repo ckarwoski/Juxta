@@ -56,7 +56,8 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
   names for each side and a note (a ticket number or purpose). Each side's original bytes are
   saved, so encoding, line endings and the final newline come back exactly; pasted text is saved
   too. Files are read again when saving, and Juxta won't save one that changed since it was
-  compared. Open a `.juxta` file by double-clicking it, with ⌘O or from File › Open Recent: it
+  compared. Open a `.juxta` file by double-clicking it, with ⌘O, from File › Open Recent, or from
+  Terminal with `juxta saved.juxta`: it
   opens in its own window with the options it was saved with, and toggling them there doesn't
   change the options other windows use. A side edited after it was
   saved still opens, with a notice. The file is a text header followed by both sides, so it
@@ -64,7 +65,16 @@ notarizes it. `Sources/Juxta` is a synced folder, so new files show up in Xcode 
   File › Export as HTML… (⇧⌘E) writes one self-contained page to share with people who don't
   have Juxta: the changes with a few lines of context, or all lines, in the same colors, in
   light or dark mode, and ready to print. From Terminal:
-  `juxta-diff --html [--context N | --all] before.cfg after.cfg > changes.html`.
+  `juxta-diff --html [--context N | --all] [--paths] before.cfg after.cfg > changes.html`.
+  `juxta-diff --save out.juxta [--note TEXT] before.cfg after.cfg` saves a comparison without
+  opening the app (either file can be `-` for standard input). It prints nothing unless you
+  also ask for `--stats`, `--json`, `--rows` or `--html`, and the exit status still follows
+  diff. `juxta-diff` also takes one `.juxta` file in place of two:
+  - It compares with the options saved in the file; `-w`, `-i` or `-t` replace them.
+  - `--html` includes the note, the saved date and a notice for sides edited after saving, as
+    the app's export does. `--json` adds a `saved` object with the note, date and edited sides.
+  - `juxta-diff --save new.juxta old.juxta` saves it again, keeping each side's source and
+    edited flag. `--note` replaces the note; without it, the note is kept.
 - ⌘R reloads both files from disk, ⌥⌘S swaps sides. ⌘+ / ⌘− make the text bigger or smaller in
   every window; ⌘0 (Actual Size) goes back to the size set in Settings.
 - **Select and copy:** in the text, drag to select characters, double-click for a word (an
@@ -94,6 +104,8 @@ empty file named `<file> (absent)`.
 - `Sources/Juxta`: the AppKit UI. Each pane draws only its visible rows with Core Text, so
   scrolling cost doesn't depend on file size.
 - `swift test` runs the engine tests (checked against a brute-force LCS).
+  `scripts/test-juxta-diff.sh` checks `juxta-diff` itself: exit statuses, `--save`, reading
+  `.juxta` files back and usage errors.
 - `Fixtures/` holds diff test pairs (encodings, line endings, config cases, large inputs);
   `docs/testing-plan.md` describes the testing plan.
 - In debug builds, `JUXTA_SNAPSHOT=/tmp/shot JUXTA_STEPS=2 .build/debug/Juxta a b` writes PNGs
